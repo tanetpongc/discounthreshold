@@ -1,30 +1,29 @@
 ---
-title: "data-explore"
+title: "Data Exploration"
 author: "Tanetpong"
 date: "06/10/2021"
 output: pdf_document
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../../gen/dataexplore") })
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup and require library, include=FALSE}
+library(dplyr) #for counting by brand using groupby
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r read data}
+df <- read.csv("../../data/df_scanner.csv")
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+Count by category
+```{r check category}
+print(table(df$category))
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Count by brand
+```{r print brand result}
+print(df %>% group_by(category) %>%
+     summarise(count = n_distinct(brand)))
+```
+
+We will first do analysis from cereals, cookies and toilet tissue due to small number of brand and moderate number of purchases in each categories.
