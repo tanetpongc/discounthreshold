@@ -88,16 +88,12 @@ remove(list=c("df_complete","weeklysalesbybrand", "df_weightcalc"))
 # Model-free evidence for absolute relationship
 We will explore relationship between price before discount, final price, discount and total sales by brand
 ```{r simple plot for absolute term}
-#final price
-par(mfrow = c(2,2))
+par(mfrow = c(3,3))
 for (i in 1:length(distinctbrandcomplete)){
-plot(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")}
-#price before discount
-for (i in 1:length(distinctbrandcomplete)){
-plot(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")}
-#discount price
-for (i in 1:length(distinctbrandcomplete)){
-plot(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")}
+plot(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")
+plot(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")
+plot(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")
+}
 ```
 
 \newpage
@@ -126,14 +122,10 @@ df_bybrand$davgdiscount <- df_bybrand$avgdiscount-df_bybrand$avgdiscount1
 # Model-free evidence for temporal relative relationship
 We will explore relationship between difference of price before discount, final price, discount and total sales by brand
 ```{r simple plot for difference}
-#final price
-par(mfrow = c(2,2))
+par(mfrow = c(3,3))
 for (i in 1:length(distinctbrandcomplete)){
-plot(dtotalvolume ~ davgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")}
-#price before discount
-for (i in 1:length(distinctbrandcomplete)){
-plot(dtotalvolume ~ davgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")}
-#discount price
-for (i in 1:length(distinctbrandcomplete)){
-plot(dtotalvolume ~ davgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")}
+plot(dtotalvolume ~ davgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")
+plot(dtotalvolume ~ davgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")
+plot(dtotalvolume ~ davgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")
+}
 ```
