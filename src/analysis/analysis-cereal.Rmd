@@ -48,9 +48,11 @@ brandweeksalestime<-setDT(brandsalecount)[, .N, .(brand)]#we count if the brand 
 #select the brand that have complete week
 brandcompleteweek<-subset(brandweeksalestime, N >= length(distinctweek))
 brandcompleteweek <- brandcompleteweek %>% mutate(brand=droplevels(brand))
+distinctbrandcomplete<-unique(brandcompleteweek$brand)
 message(paste("The total number of brand that has complete observation for this category:", dim(brandcompleteweek)[1]))
 
 df_complete <- df[df$brand %in% brandcompleteweek$brand, ]
+df_complete <- df_complete %>% mutate(brand=droplevels(brand))
 message(paste("The number of observation before dropping non-complete brand:", dim(df)[1]))
 message(paste("The number of observation after dropping non-complete brand:", dim(df_complete)[1]))
 
@@ -77,3 +79,21 @@ df_bybrand <- setDT(df_weightcalc)[, .(totalvolume=sum(sales_volume),totalvalue=
 #remove prior df
 remove(list=c("df_complete","weeklysalesbybrand", "df_weightcalc"))
 ```
+
+# Model-free evidence
+We will explore relationship between price before discount, final price, discount and total sales by brand
+```{r simple plot}
+#final price
+par(mfrow = c(2,2))
+for (i in 1:length(distinctbrandcomplete)){
+plot(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")}
+#price before discount
+for (i in 1:length(distinctbrandcomplete)){
+plot(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")}
+#discount price
+for (i in 1:length(distinctbrandcomplete)){
+plot(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")}
+```
+
+
+
