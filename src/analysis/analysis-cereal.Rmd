@@ -1,0 +1,79 @@
+---
+title: "Price Discount Analysis for Cereals"
+author: "Tanetpong"
+date: "18/10/2021"
+output: pdf_document
+---
+
+```{r setup and require library, include=FALSE, WARNING = FALSE}
+library(dplyr) #for mutate factor level of brand
+library(plyr) #for revalue function for brand
+library(data.table) #for set DT checking brand
+```
+
+```{r read data}
+df_scanner <- read.csv("../../data/df_scanner.csv")
+df <-subset(df_scanner,category == "Cereals")
+df <- df %>% mutate(brand=droplevels(brand)) #Because the subset function doesnt drop the factor per se
+df <- df %>% mutate(vecka=droplevels(as.factor(vecka))) #In case some categories doesnt have full week like another
+#for simplicity, we will drop online sales for now (due to small data)
+df_online <- subset(df, saljkanal == 1)
+message(paste("The total number of weekly online sold for this category:", dim(df_online)[1]))
+df <- subset(df, saljkanal == 0)
+remove(list=c("df_scanner", "df_online")) #remove unnecessary file to make environment clean
+```
+
+```{r Rename the brand of cereal for consistency, be careful of non-roman character}
+table(df$brand)
+df$brand<- revalue(df$brand, c(
+              "Honey Monster"="Honey Monster",
+              "ICA Basic"="ICA", "ICA Gott Liv"="ICA","ICA Basic"="ICA", "ICA I love eco"="ICA",
+              "KUNG MARKATTA"="Kung markatta",
+              "Paulun"="Pauluns",
+              "QUAKER"="Quaker",
+              "RenÃ©e Voltaire"="ReneeVoltaire", "RENÃ‰E VOLTAIRE"="ReneeVoltaire"
+              ))
+table(df$brand)
+```
+
+```{r select the brand with every weekly sales regardless of sku, echo=FALSE}
+#create a table of distinct week
+distinctweek<-unique(df$vecka)
+message(paste("The total number of week sold for this category:", length(distinctweek)))
+#calculate the brand sales by week
+distinctbrand<-unique(df$brand)
+message(paste("The total number of brand for this category:", length(distinctbrand)))
+brandsalecount<-setDT(df)[, .N, .(vecka,brand)]
+brandweeksalestime<-setDT(brandsalecount)[, .N, .(brand)]#we count if the brand got shown in the scanner data each week
+#select the brand that have complete week
+brandcompleteweek<-subset(brandweeksalestime, N >= length(distinctweek))
+brandcompleteweek <- brandcompleteweek %>% mutate(brand=droplevels(brand))
+message(paste("The total number of brand that has complete observation for this category:", dim(brandcompleteweek)[1]))
+
+df_complete <- df[df$brand %in% brandcompleteweek$brand, ]
+message(paste("The number of observation before dropping non-complete brand:", dim(df)[1]))
+message(paste("The number of observation after dropping non-complete brand:", dim(df_complete)[1]))
+
+#remove used data
+remove(list=c("brandsalecount", "brandweeksalestime","brandcompleteweek","df")) 
+```
+
+We want to compare between the *change in final price* vis a vis the *change in discount* and interesting to see the price before (now we will compare three aspects) 
+```{r calculate the price related variables or our main IV}
+#Price of brand b in period t, computed as a sales-weighted average across its SKUs sold in period t
+df_complete$pricebeforeperunit <- df_complete$spendingbeforedisc/df_complete$sales_volume
+df_complete$finalpriceperunit <- df_complete$finalspending/df_complete$sales_volume
+df_complete$discountperunit <- df_complete$totaldiscount/df_complete$sales_volume
+#calculated weight
+weeklysalesbybrand<-setDT(df_complete)[, .(totalsales=sum(finalspending)), .(vecka,brand)]
+df_weightcalc <- merge(df_complete,weeklysalesbybrand, by=c("vecka","brand"))
+df_weightcalc$wp <- df_weightcalc$finalspending/df_weightcalc$totalsales
+    # check<-setDT(df_weightcalc)[, .(totalwp=sum(wp)), .(vecka,brand)] #check if weight sum to 1
+df_weightcalc$avgpricebefore <- df_complete$pricebeforeperunit*df_weightcalc$wp
+df_weightcalc$avgfinalprice <- df_complete$finalpriceperunit*df_weightcalc$wp
+df_weightcalc$avgdiscount <- df_complete$discountperunit*df_weightcalc$wp
+df_bybrand <- setDT(df_weightcalc)[, .(totalvolume=sum(sales_volume),totalvalue=sum(finalspending),avgpricebefore=sum(avgpricebefore),avgfinalprice=sum(avgfinalprice),avgdiscount=sum(avgdiscount)), .(vecka,brand)]
+
+#remove prior df
+remove(list=c("df_complete","weeklysalesbybrand", "df_weightcalc"))
+```
