@@ -65,31 +65,32 @@ message(paste("The number of observation after dropping non-complete brand:", di
 remove(list=c("brandsalecount", "brandweeksalestime","brandcompleteweek","df")) 
 ```
 
-We want to compare between the *change in final price* vis a vis the *change in discount* and interesting to see the price before (now we will compare three aspects) 
-```{r calculate the price related variables or our main IV}
+We want to compare between the *change in final price* vis a vis the *change in discount* and interesting to see the price before (now we will compare three aspects). Hence, we will create an aggregate price-related variable and line-length (aka assortment).
+```{r calculate the brand price related variables and linelength or our main IV}
+#Number of unique SKUs sold by brand b in period t
 #Price of brand b in period t, computed as a sales-weighted average across its SKUs sold in period t
 df_complete$pricebeforeperunit <- df_complete$spendingbeforedisc/df_complete$sales_volume
 df_complete$finalpriceperunit <- df_complete$finalspending/df_complete$sales_volume
 df_complete$discountperunit <- df_complete$totaldiscount/df_complete$sales_volume
 #calculated weight
-weeklysalesbybrand<-setDT(df_complete)[, .(totalsales=sum(finalspending)), .(vecka,brand)]
+weeklysalesbybrand<-setDT(df_complete)[, .(totalsales=sum(finalspending),LL=uniqueN(produkt_id)), .(vecka,brand)]
 df_weightcalc <- merge(df_complete,weeklysalesbybrand, by=c("vecka","brand"))
 df_weightcalc$wp <- df_weightcalc$finalspending/df_weightcalc$totalsales
     # check<-setDT(df_weightcalc)[, .(totalwp=sum(wp)), .(vecka,brand)] #check if weight sum to 1
 df_weightcalc$avgpricebefore <- df_weightcalc$pricebeforeperunit*df_weightcalc$wp
 df_weightcalc$avgfinalprice <- df_weightcalc$finalpriceperunit*df_weightcalc$wp
 df_weightcalc$avgdiscount <- df_weightcalc$discountperunit*df_weightcalc$wp
-df_bybrand <- setDT(df_weightcalc)[, .(totalvolume=sum(sales_volume),totalvalue=sum(finalspending),avgpricebefore=sum(avgpricebefore),avgfinalprice=sum(avgfinalprice),avgdiscount=sum(avgdiscount)), .(vecka,brand)]
+df_bybrand <- setDT(df_weightcalc)[, .(totalvolume=sum(sales_volume),totalvalue=sum(finalspending),LL=mean(LL),avgpricebefore=sum(avgpricebefore),avgfinalprice=sum(avgfinalprice),avgdiscount=sum(avgdiscount)), .(vecka,brand)]
 
 #remove prior df
 remove(list=c("df_complete","weeklysalesbybrand", "df_weightcalc"))
 ```
 
-We also have to create competitor price.
+We also have to create competitor price and line-length.
 ```{r calculate the competitor price}
 nbrand<-length(distinctbrandcomplete)
 nweek<-length(distinctweek)
-df_rep <- data.frame(matrix(NA, ncol = 10 , nrow = ((nbrand)*(nweek)))) #create an empty table for iteration information of each brand
+df_rep <- data.frame(matrix(NA, ncol = 12 , nrow = ((nbrand)*(nweek)))) #create an empty table for iteration information of each brand
 
 #We calculate competitors info for each brand and then replace in the df_rep (rbind each brand)
 for (i in 1:length(distinctbrandcomplete)){
@@ -98,22 +99,21 @@ weeklysalesbycompetingbrand<-setDT(df_competitor)[, .(totalmarketvalue=sum(total
 df_competitorweightcalc <- merge(df_competitor,weeklysalesbycompetingbrand, by=c("vecka"))
 df_competitorweightcalc$wp <- df_competitorweightcalc$totalvalue/df_competitorweightcalc$totalmarketvalue
   # check<-setDT(df_competitorweightcalc)[, .(totalwp=sum(wp)), .(vecka)] #check if weight sum to 1
+df_competitorweightcalc$avgcompLL <- df_competitorweightcalc$LL*df_competitorweightcalc$wp
 df_competitorweightcalc$avgcomppricebefore <- df_competitorweightcalc$avgpricebefore*df_competitorweightcalc$wp
 df_competitorweightcalc$avgcompfinalprice <- df_competitorweightcalc$avgfinalprice*df_competitorweightcalc$wp
 df_competitorweightcalc$avgcompdiscount <- df_competitorweightcalc$avgdiscount*df_competitorweightcalc$wp
-df_competitorprice <- setDT(df_competitorweightcalc)[, .(avgcomppricebefore=sum(avgcomppricebefore), avgcompfinalprice=sum(avgcompfinalprice), avgcompdiscount=sum(avgcompdiscount)), .(vecka)]
+df_competitorinfo <- setDT(df_competitorweightcalc)[, .(avgcompLL=sum(avgcompLL),avgcomppricebefore=sum(avgcomppricebefore), avgcompfinalprice=sum(avgcompfinalprice), avgcompdiscount=sum(avgcompdiscount)), .(vecka)]
 df_own=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]
-df_own <- merge(df_own,df_competitorprice, by=c("vecka"))
+df_own <- merge(df_own,df_competitorinfo, by=c("vecka"))
 df_rep[(1+((i-1)*153)):(153+((i-1)*153)),] = df_own
 df_rep[(1+((i-1)*153)):(153+((i-1)*153)),2] <- toString(distinctbrandcomplete[i])
 }
 colnames(df_rep) <- colnames(df_own) #replace empty table column name with the original column name
 df_rep[,1] <- df_own[,1] #the vecka infor is not replaced so we have to replace from the original table
-df_rep <- df_bybrand
-remove(list=c("df_rep","df_competitor", "df_competitorweightcalc",))
+df_bybrand <- df_rep
+remove(list=c("df_competitor","weeklysalesbycompetingbrand", "df_competitorweightcalc","df_competitorinfo","df_own","df_rep"))
 ```
-
-It is beneficial to calculated line length and price
 
 \newpage
 # Model-free evidence for absolute relationship
