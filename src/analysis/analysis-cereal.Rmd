@@ -31,7 +31,8 @@ remove(list=c("df_scanner", "df_online")) #remove unnecessary file to make envir
 table(df$brand)
 df$brand<- revalue(df$brand, c(
               "Honey Monster"="Honey Monster",
-              "ICA Basic"="ICA", "ICA Gott Liv"="ICA","ICA Basic"="ICA", "ICA I love eco"="ICA",
+              "ICA Basic"="ICA", 
+              #"ICA Gott Liv"="ICA","ICA Basic"="ICA", "ICA I love eco"="ICA", because they have a different perception
               "KUNG MARKATTA"="Kung markatta",
               "Paulun"="Pauluns",
               "QUAKER"="Quaker",
@@ -75,24 +76,57 @@ weeklysalesbybrand<-setDT(df_complete)[, .(totalsales=sum(finalspending)), .(vec
 df_weightcalc <- merge(df_complete,weeklysalesbybrand, by=c("vecka","brand"))
 df_weightcalc$wp <- df_weightcalc$finalspending/df_weightcalc$totalsales
     # check<-setDT(df_weightcalc)[, .(totalwp=sum(wp)), .(vecka,brand)] #check if weight sum to 1
-df_weightcalc$avgpricebefore <- df_complete$pricebeforeperunit*df_weightcalc$wp
-df_weightcalc$avgfinalprice <- df_complete$finalpriceperunit*df_weightcalc$wp
-df_weightcalc$avgdiscount <- df_complete$discountperunit*df_weightcalc$wp
+df_weightcalc$avgpricebefore <- df_weightcalc$pricebeforeperunit*df_weightcalc$wp
+df_weightcalc$avgfinalprice <- df_weightcalc$finalpriceperunit*df_weightcalc$wp
+df_weightcalc$avgdiscount <- df_weightcalc$discountperunit*df_weightcalc$wp
 df_bybrand <- setDT(df_weightcalc)[, .(totalvolume=sum(sales_volume),totalvalue=sum(finalspending),avgpricebefore=sum(avgpricebefore),avgfinalprice=sum(avgfinalprice),avgdiscount=sum(avgdiscount)), .(vecka,brand)]
 
 #remove prior df
 remove(list=c("df_complete","weeklysalesbybrand", "df_weightcalc"))
 ```
 
+We also have to create competitor price.
+```{r calculate the competitor price}
+nbrand<-length(distinctbrandcomplete)
+nweek<-length(distinctweek)
+df_rep <- data.frame(matrix(NA, ncol = 10 , nrow = ((nbrand)*(nweek)))) #create an empty table for iteration information of each brand
+
+#We calculate competitors info for each brand and then replace in the df_rep (rbind each brand)
+for (i in 1:length(distinctbrandcomplete)){
+df_competitor=df_bybrand[df_bybrand$brand != distinctbrandcomplete[i]]
+weeklysalesbycompetingbrand<-setDT(df_competitor)[, .(totalmarketvalue=sum(totalvalue)), .(vecka)]
+df_competitorweightcalc <- merge(df_competitor,weeklysalesbycompetingbrand, by=c("vecka"))
+df_competitorweightcalc$wp <- df_competitorweightcalc$totalvalue/df_competitorweightcalc$totalmarketvalue
+  # check<-setDT(df_competitorweightcalc)[, .(totalwp=sum(wp)), .(vecka)] #check if weight sum to 1
+df_competitorweightcalc$avgcomppricebefore <- df_competitorweightcalc$avgpricebefore*df_competitorweightcalc$wp
+df_competitorweightcalc$avgcompfinalprice <- df_competitorweightcalc$avgfinalprice*df_competitorweightcalc$wp
+df_competitorweightcalc$avgcompdiscount <- df_competitorweightcalc$avgdiscount*df_competitorweightcalc$wp
+df_competitorprice <- setDT(df_competitorweightcalc)[, .(avgcomppricebefore=sum(avgcomppricebefore), avgcompfinalprice=sum(avgcompfinalprice), avgcompdiscount=sum(avgcompdiscount)), .(vecka)]
+df_own=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]
+df_own <- merge(df_own,df_competitorprice, by=c("vecka"))
+df_rep[(1+((i-1)*153)):(153+((i-1)*153)),] = df_own
+df_rep[(1+((i-1)*153)):(153+((i-1)*153)),2] <- toString(distinctbrandcomplete[i])
+}
+colnames(df_rep) <- colnames(df_own) #replace empty table column name with the original column name
+df_rep[,1] <- df_own[,1] #the vecka infor is not replaced so we have to replace from the original table
+df_rep <- df_bybrand
+remove(list=c("df_rep","df_competitor", "df_competitorweightcalc",))
+```
+
+It is beneficial to calculated line length and price
+
 \newpage
 # Model-free evidence for absolute relationship
 We will explore relationship between price before discount, final price, discount and total sales by brand
-```{r simple plot for absolute term}
+```{r simple plot for absolute term with linear regression}
 par(mfrow = c(3,3))
 for (i in 1:length(distinctbrandcomplete)){
 plot(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")
+abline(lm(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]), col="blue")
 plot(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")
+abline(lm(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]), col="green")
 plot(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")
+abline(lm(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]), col="red")
 }
 ```
 
@@ -116,16 +150,53 @@ df_bybrand$dtotalvalue <- df_bybrand$totalvalue-df_bybrand$totalvalue1
 df_bybrand$davgfinalprice <- df_bybrand$avgfinalprice-df_bybrand$avgfinalprice1
 df_bybrand$davgpricebefore <- df_bybrand$avgpricebefore-df_bybrand$avgpricebefore1
 df_bybrand$davgdiscount <- df_bybrand$avgdiscount-df_bybrand$avgdiscount1
+
+#calculate percentage change
+df_bybrand$pdtotalvolume <- (df_bybrand$totalvolume-df_bybrand$totalvolume1)/df_bybrand$totalvolume1
+df_bybrand$pdtotalvalue <- (df_bybrand$totalvalue-df_bybrand$totalvalue1)/df_bybrand$totalvalue1
+df_bybrand$pdavgfinalprice <- (df_bybrand$avgfinalprice-df_bybrand$avgfinalprice1)/df_bybrand$avgfinalprice1
+df_bybrand$pdavgpricebefore <- (df_bybrand$avgpricebefore-df_bybrand$avgpricebefore1)/df_bybrand$avgpricebefore1
+#if you calculate using prior discount as denominator could lead to inf so we define them as (percentage change relative to price before discount)
+df_bybrand$pdavgdiscount <- (df_bybrand$avgdiscount/df_bybrand$avgpricebefore)-(df_bybrand$avgdiscount1/df_bybrand$avgpricebefore1)
 ```
 
 \newpage
 # Model-free evidence for temporal relative relationship
 We will explore relationship between difference of price before discount, final price, discount and total sales by brand
-```{r simple plot for difference}
+```{r simple plot for absolute and percentage difference}
 par(mfrow = c(3,3))
+#absolute different
 for (i in 1:length(distinctbrandcomplete)){
 plot(dtotalvolume ~ davgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")
 plot(dtotalvolume ~ davgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")
 plot(dtotalvolume ~ davgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")
 }
+#percentage difference
+for (i in 1:length(distinctbrandcomplete)){
+plot(pdtotalvolume ~ pdavgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")
+abline(v= 0, col="black")
+abline(h= 0, col="black")
+plot(pdtotalvolume ~ pdavgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")
+abline(v= 0, col="black")
+abline(h= 0, col="black")
+plot(pdtotalvolume ~ pdavgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")
+abline(v= 0, col="black")
+abline(h= 0, col="black")
+}
 ```
+\newpage
+# Analysis: Replicating Pauwel et al. (2007)
+
+## Working on Price
+
+$\Delta ln(S_{i,t}) = c + \alpha_0\Delta ln(P_{i,t})+\sum_{j=1}^{J-1} \kappa_{j}ln(P_{j,t})+\phi_{1}[ln(S_{i,t-1})-\phi_{2}ln(P_{i,t-1})]+\epsilon_{i,t}$
+
+d
+```{r}
+
+```
+
+\newpage
+# Analysis: My further analysis
+
+## Working on Discount
