@@ -115,6 +115,7 @@ df_bybrand <- df_rep
 remove(list=c("df_competitor","weeklysalesbycompetingbrand", "df_competitorweightcalc","df_competitorinfo","df_own","df_rep"))
 ```
 
+
 \newpage
 # Model-free evidence for absolute relationship
 We will explore relationship between price before discount, final price, discount and total sales by brand
