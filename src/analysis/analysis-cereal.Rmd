@@ -25,6 +25,8 @@ df_online <- subset(df, saljkanal == 1)
 message(paste("The total number of weekly online sold for this category:", dim(df_online)[1]))
 df <- subset(df, saljkanal == 0)
 remove(list=c("df_scanner", "df_online")) #remove unnecessary file to make environment clean
+df_holiday <- read.csv("../../data/weeklyholiday.csv")
+df_holiday$vecka <- as.factor(df_holiday$vecka)
 ```
 
 ```{r Rename the brand of cereal for consistency, be careful of non-roman character}
@@ -94,7 +96,7 @@ df_rep <- data.frame(matrix(NA, ncol = 12 , nrow = ((nbrand)*(nweek)))) #create 
 
 #We calculate competitors info for each brand and then replace in the df_rep (rbind each brand)
 for (i in 1:length(distinctbrandcomplete)){
-df_competitor=df_bybrand[df_bybrand$brand != distinctbrandcomplete[i]]
+df_competitor=df_bybrand[df_bybrand$brand != distinctbrandcomplete[i],]
 weeklysalesbycompetingbrand<-setDT(df_competitor)[, .(totalmarketvalue=sum(totalvalue)), .(vecka)]
 df_competitorweightcalc <- merge(df_competitor,weeklysalesbycompetingbrand, by=c("vecka"))
 df_competitorweightcalc$wp <- df_competitorweightcalc$totalvalue/df_competitorweightcalc$totalmarketvalue
@@ -104,13 +106,14 @@ df_competitorweightcalc$avgcomppricebefore <- df_competitorweightcalc$avgpricebe
 df_competitorweightcalc$avgcompfinalprice <- df_competitorweightcalc$avgfinalprice*df_competitorweightcalc$wp
 df_competitorweightcalc$avgcompdiscount <- df_competitorweightcalc$avgdiscount*df_competitorweightcalc$wp
 df_competitorinfo <- setDT(df_competitorweightcalc)[, .(avgcompLL=sum(avgcompLL),avgcomppricebefore=sum(avgcomppricebefore), avgcompfinalprice=sum(avgcompfinalprice), avgcompdiscount=sum(avgcompdiscount)), .(vecka)]
-df_own=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]
+df_own=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],]
 df_own <- merge(df_own,df_competitorinfo, by=c("vecka"))
 df_rep[(1+((i-1)*153)):(153+((i-1)*153)),] = df_own
 df_rep[(1+((i-1)*153)):(153+((i-1)*153)),2] <- toString(distinctbrandcomplete[i])
 }
 colnames(df_rep) <- colnames(df_own) #replace empty table column name with the original column name
 df_rep[,1] <- df_own[,1] #the vecka infor is not replaced so we have to replace from the original table
+df_rep$brand<-as.factor(df_rep$brand)
 df_bybrand <- df_rep
 remove(list=c("df_competitor","weeklysalesbycompetingbrand", "df_competitorweightcalc","df_competitorinfo","df_own","df_rep"))
 ```
@@ -120,14 +123,16 @@ remove(list=c("df_competitor","weeklysalesbycompetingbrand", "df_competitorweigh
 # Model-free evidence for absolute relationship
 We will explore relationship between price before discount, final price, discount and total sales by brand
 ```{r simple plot for absolute term with linear regression}
+#If I didnt out comma when I'm subsetting; It is throwing an error of undefined columns because you forgot the comma after defining your objective. Because we want to select the row with a given specific condition
 par(mfrow = c(3,3))
 for (i in 1:length(distinctbrandcomplete)){
-plot(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")
-abline(lm(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]), col="blue")
-plot(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")
-abline(lm(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]), col="green")
-plot(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")
-abline(lm(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]]), col="red")
+plot(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="blue")
+abline(lm(totalvolume ~ avgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],]), col="blue")
+plot(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],],
+     main = distinctbrandcomplete[i], col="green")
+abline(lm(totalvolume ~ avgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],]), col="green")
+plot(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="red")
+abline(lm(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],]), col="red")
 }
 ```
 
@@ -168,33 +173,103 @@ We will explore relationship between difference of price before discount, final 
 par(mfrow = c(3,3))
 #absolute different
 for (i in 1:length(distinctbrandcomplete)){
-plot(dtotalvolume ~ davgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")
-plot(dtotalvolume ~ davgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")
-plot(dtotalvolume ~ davgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")
+plot(dtotalvolume ~ davgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="blue")
+plot(dtotalvolume ~ davgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="green")
+plot(dtotalvolume ~ davgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="red")
 }
 #percentage difference
 for (i in 1:length(distinctbrandcomplete)){
-plot(pdtotalvolume ~ pdavgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="blue")
+plot(pdtotalvolume ~ pdavgfinalprice, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="blue")
 abline(v= 0, col="black")
 abline(h= 0, col="black")
-plot(pdtotalvolume ~ pdavgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="green")
+plot(pdtotalvolume ~ pdavgpricebefore, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="green")
 abline(v= 0, col="black")
 abline(h= 0, col="black")
-plot(pdtotalvolume ~ pdavgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i]], main = distinctbrandcomplete[i], col="red")
+plot(pdtotalvolume ~ pdavgdiscount, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="red")
 abline(v= 0, col="black")
 abline(h= 0, col="black")
 }
 ```
 \newpage
+# Explore data more
+We want to see if we have to control for seasonality or holiday
+We will explore relationship between difference of price before discount, final price, discount and total sales by brand
+```{r Plot time series for sales}
+#print the plot of each brand
+for (i in 1:length(distinctbrandcomplete)){
+plot(totalvolume ~ vecka, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="darkblue")
+}
+```
+```{r plot time series with holidays}
+#It is tricky to plot several holidays in plot function because ABline doesn't work for factor. Hence, I have to convert the week factor into numerical value and then plot (so you will see that there is a big gap between each year)
+holidays <- df_holiday[df_holiday$holiday > 0,] 
+holidays <- holidays %>% mutate(vecka=droplevels(vecka))
+holidays$vecka <-   as.numeric(as.character(holidays$vecka))
+distinctholiday <- unique(holidays$vecka)
+df_bybrand_date <- df_bybrand
+df_bybrand_date$vecka <-   as.numeric(as.character(df_bybrand_date$vecka))
+
+#print the plot of each brand and abline of each week
+for (i in 1:length(distinctbrandcomplete)){
+
+plot(totalvolume ~ vecka, data=df_bybrand_date[df_bybrand_date$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="darkblue")
+    #create abline for holiday
+    for (j in 1:length(distinctholiday)){
+    abline(v= distinctholiday[j], col="blue")}
+}
+remove(list=c("holidays","df_bybrand_date"))
+```
+
+```{r merge holiday info}
+df_bybrand <- merge(df_bybrand,df_holiday[,2:3], by=c("vecka"))
+
+```
+
+
+
+\newpage
 # Analysis: Replicating Pauwel et al. (2007)
 
 ## Working on Price
 
+### Estimate sales responses
+
+From Error-Correction Form
 $\Delta ln(S_{i,t}) = c + \alpha_0\Delta ln(P_{i,t})+\sum_{j=1}^{J-1} \kappa_{j}ln(P_{j,t})+\phi_{1}[ln(S_{i,t-1})-\phi_{2}ln(P_{i,t-1})]+\epsilon_{i,t}$
 
-d
-```{r}
+Example of full model (from Koen Pauwels, Shuba Srinivasan and Philip-Hans Franses 2007)
 
+With 4 brands in the category, an example of a full model that is estimated is 
+
+
+$$log(S_{4,t})-log(S_{4,t-1})= c +[\alpha_{0} + \frac{\alpha_{G,HBP}}{1+exp(100(log(P_{4,t})-log(P_{4,t-1})-\beta_{G,HBP})}\\ +\frac{\alpha_{L,HBP}}{1+exp(-100(log(P_{4,t})-log(P_{4,t-1})-\beta_{L,HBP})}\\
++\frac{\alpha_{G,CBP}}{1+exp(100\frac{P_{4,t}-CP_{t}}{CP_{t}}-\beta_{G,CBP})}\\
++\frac{\alpha_{L,CBP}}{1+exp(-100\frac{P_{4,t}-CP_{t}}{CP_{t}}-\beta_{L,CBP})}](log(P_{4,t})-log(P_{4,t-1}))\\
++\kappa_{1}(log(P_{1,t})-log(P_{1,t-1}))+\kappa_{2}(log(P_{2,t})-log(P_{2,t-1}))+\kappa_{3}(log(P_{3,t})-log(P_{3,t-1}))\\
++\phi_1log(S_{4,t-1})+\Phi log(P_{4,t-1})+\delta_{1}(Feat_{4})+\delta{2}(Display_{4})\\
++\sum_{s=1}^{12}s_{i}Month_{i} + \sum_{h=1}^{H}h_{h}Holiday_{h}$$
+
+where $100$ is $\gamma$ is the smoothness of the transition curve (In Pauwels, Srinivasan and Franses 2007, they set the gamma parameters at the same value of 500)
+
+
+Follow
+(1) Check Linear Model
+
+```{r estimate linear model without gap}
+#Create relevant variable for calculate
+  df_bybrand$dlogsale = log(df_bybrand$totalvolume)-log(df_bybrand$totalvolume1)
+  df_bybrand$dlogprice = log(df_bybrand$avgfinalprice)-log(df_bybrand$avgfinalprice1)
+
+lm_simple <- lm(dlogsale ~ davgpricebefore,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+```
+
+
+
+
+
+```{r}
+log(vol4) - log(vol4(-1))=c(1)+(c(201)+c(222)/(1+exp(100*((log(price4)-log(price4(-1)))-c(701))))+ c(223)/(1+exp(-100*((log(price4)-log(price4(-1)))-c(702))))+ c(224)/(1+exp(100*(((price4-(price1+price2+price3)/3)/((price1+price2+price3)/3))-c(703))))+c(225)/(1+exp(-100*(((price4-(price1+price2+price3)/3)/((price1+price2+price3)/3))-c(704)))) )*(log(price4)-log(price4(-1)))+c(202)*(log(price1)-log(price1(-1)))+c(203)*(log(price2)-log(price2(-1)))+c(204)*(log(price3)-log(price3(-1)))+c(3)*log(vol4(-1))+c(4)*log(price4(-1))+c(5)*promo14+c(6)*promo24+c(7)*s2+c(8)*s3+c(9)*s4+c(10)*s5+c(11)*s6+c(12)*s7+c(13)*s8+c(14)*s9+c(15)*s10+c(16)*s11+c(17)*s12+c(18)*s13+c(19)*d1+c(20)*d2+c(21)*d3+c(22)*d4+c(23)*d5+c(24)*d6+c(25)*d7+c(26)*d8+c(27)*d9+c(28)*d10
+#Why you set the c(4) seperate from c(5)
 ```
 
 \newpage
