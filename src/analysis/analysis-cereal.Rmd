@@ -11,6 +11,8 @@ knit: (function(inputFile, encoding) {
 library(dplyr) #for mutate factor level of brand
 library(plyr) #for revalue function for brand
 library(data.table) #for set DT checking brand
+library(car) #testing differences in coefficients using frequentist way
+library(lmtest) #testing for relevance of the variable using likelihood ratio
 ```
 
 # Data Management
@@ -68,7 +70,7 @@ remove(list=c("brandsalecount", "brandweeksalestime","brandcompleteweek","df"))
 ```
 
 We want to compare between the *change in final price* vis a vis the *change in discount* and interesting to see the price before (now we will compare three aspects). Hence, we will create an aggregate price-related variable and line-length (aka assortment).
-```{r calculate the brand price related variables and linelength or our main IV}
+```{r calculate the brand price related variables and linelength or our main IV, echo=FALSE}
 #Number of unique SKUs sold by brand b in period t
 #Price of brand b in period t, computed as a sales-weighted average across its SKUs sold in period t
 df_complete$pricebeforeperunit <- df_complete$spendingbeforedisc/df_complete$sales_volume
@@ -89,7 +91,7 @@ remove(list=c("df_complete","weeklysalesbybrand", "df_weightcalc"))
 ```
 
 We also have to create competitor price and line-length.
-```{r calculate the competitor price}
+```{r calculate the competitor price, echo=FALSE}
 nbrand<-length(distinctbrandcomplete)
 nweek<-length(distinctweek)
 df_rep <- data.frame(matrix(NA, ncol = 12 , nrow = ((nbrand)*(nweek)))) #create an empty table for iteration information of each brand
@@ -122,7 +124,8 @@ remove(list=c("df_competitor","weeklysalesbycompetingbrand", "df_competitorweigh
 \newpage
 # Model-free evidence for absolute relationship
 We will explore relationship between price before discount, final price, discount and total sales by brand
-```{r simple plot for absolute term with linear regression}
+
+```{r simple plot for absolute term with linear regression, echo=FALSE}
 #If I didnt out comma when I'm subsetting; It is throwing an error of undefined columns because you forgot the comma after defining your objective. Because we want to select the row with a given specific condition
 par(mfrow = c(3,3))
 for (i in 1:length(distinctbrandcomplete)){
@@ -139,16 +142,22 @@ abline(lm(totalvolume ~ avgdiscount, data=df_bybrand[df_bybrand$brand == distinc
 \newpage
 # Explore the lag
 Next, we want to see the difference term between time. Hence, we need to create lagged variable (by brand)
+
 ```{r generate lag term(s)}
 #We have to sort the data in the way that we have the same brand and ascending order row
 df_bybrand<-df_bybrand[order(df_bybrand$brand,df_bybrand$vecka),]
-#Create Lag(1) of TotalVolume,TotalValue, Price before, Final Price and Discount for each brand
+#Create Lag(1) of TotalVolume,TotalValue, Price before, Final Price, Discount, LineLength for each brand, AND competitive price&linelength
 lag_1 <- function(x, k = 1) head(c(rep(NA, k), x), length(x))
 df_bybrand$totalvolume1 <- ave(df_bybrand$totalvolume, df_bybrand$brand, FUN= lag_1)
 df_bybrand$totalvalue1 <- ave(df_bybrand$totalvalue, df_bybrand$brand, FUN= lag_1)
+df_bybrand$LL1 <- ave(df_bybrand$LL, df_bybrand$brand, FUN= lag_1)
 df_bybrand$avgfinalprice1 <- ave(df_bybrand$avgfinalprice, df_bybrand$brand, FUN= lag_1)
 df_bybrand$avgpricebefore1 <- ave(df_bybrand$avgpricebefore, df_bybrand$brand, FUN= lag_1)
 df_bybrand$avgdiscount1 <- ave(df_bybrand$avgdiscount, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgcompLL1 <- ave(df_bybrand$avgcompLL, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgcompfinalprice1 <- ave(df_bybrand$avgfinalprice, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgcomppricebefore1 <- ave(df_bybrand$avgpricebefore, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgcompdiscount1 <- ave(df_bybrand$avgdiscount, df_bybrand$brand, FUN= lag_1)
 #We drop week 0
 df_bybrand <- na.omit(df_bybrand)
 df_bybrand$dtotalvolume <- df_bybrand$totalvolume-df_bybrand$totalvolume1
@@ -168,8 +177,9 @@ df_bybrand$pdavgdiscount <- (df_bybrand$avgdiscount/df_bybrand$avgpricebefore)-(
 
 \newpage
 # Model-free evidence for temporal relative relationship
-We will explore relationship between difference of price before discount, final price, discount and total sales by brand
-```{r simple plot for absolute and percentage difference}
+We will explore relationship between difference of price before discount, final price, discount and total sales by brand. We first explore their absolute relationship and then explore their percentage relationship.
+
+```{r simple plot for absolute and percentage difference, echo=FALSE}
 par(mfrow = c(3,3))
 #absolute different
 for (i in 1:length(distinctbrandcomplete)){
@@ -191,16 +201,21 @@ abline(h= 0, col="black")
 }
 ```
 \newpage
+
 # Explore data more
+
 We want to see if we have to control for seasonality or holiday
 We will explore relationship between difference of price before discount, final price, discount and total sales by brand
-```{r Plot time series for sales}
+
+```{r Plot time series for sales, echo=FALSE}
+par(mfrow = c(3,3))
 #print the plot of each brand
 for (i in 1:length(distinctbrandcomplete)){
 plot(totalvolume ~ vecka, data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],], main = distinctbrandcomplete[i], col="darkblue")
 }
 ```
-```{r plot time series with holidays}
+```{r plot time series with holidays, include=FALSE}
+par(mfrow = c(3,3))
 #It is tricky to plot several holidays in plot function because ABline doesn't work for factor. Hence, I have to convert the week factor into numerical value and then plot (so you will see that there is a big gap between each year)
 holidays <- df_holiday[df_holiday$holiday > 0,] 
 holidays <- holidays %>% mutate(vecka=droplevels(vecka))
@@ -220,14 +235,14 @@ plot(totalvolume ~ vecka, data=df_bybrand_date[df_bybrand_date$brand == distinct
 remove(list=c("holidays","df_bybrand_date"))
 ```
 
-```{r merge holiday info}
+```{r merge holiday info, echo=FALSE}
 df_bybrand <- merge(df_bybrand,df_holiday[,2:3], by=c("vecka"))
-
 ```
 
 
 
 \newpage
+
 # Analysis: Replicating Pauwel et al. (2007)
 
 ## Working on Price
@@ -235,42 +250,197 @@ df_bybrand <- merge(df_bybrand,df_holiday[,2:3], by=c("vecka"))
 ### Estimate sales responses
 
 From Error-Correction Form
-$\Delta ln(S_{i,t}) = c + \alpha_0\Delta ln(P_{i,t})+\sum_{j=1}^{J-1} \kappa_{j}ln(P_{j,t})+\phi_{1}[ln(S_{i,t-1})-\phi_{2}ln(P_{i,t-1})]+\epsilon_{i,t}$
+$$\Delta ln(S_{i,t}) = c + \alpha_0\Delta ln(P_{i,t})+\sum_{j=1}^{J-1} \kappa_{j}ln(P_{j,t})+\phi_{1}[ln(S_{i,t-1})-\phi_{2}ln(P_{i,t-1})]+\epsilon_{i,t}$$
 
-Example of full model (from Koen Pauwels, Shuba Srinivasan and Philip-Hans Franses 2007)
+**Example of full model (from Koen Pauwels, Shuba Srinivasan and Philip-Hans Franses 2007)**
 
-With 4 brands in the category, an example of a full model that is estimated is 
-
-
-$$log(S_{4,t})-log(S_{4,t-1})= c +[\alpha_{0} + \frac{\alpha_{G,HBP}}{1+exp(100(log(P_{4,t})-log(P_{4,t-1})-\beta_{G,HBP})}\\ +\frac{\alpha_{L,HBP}}{1+exp(-100(log(P_{4,t})-log(P_{4,t-1})-\beta_{L,HBP})}\\
-+\frac{\alpha_{G,CBP}}{1+exp(100\frac{P_{4,t}-CP_{t}}{CP_{t}}-\beta_{G,CBP})}\\
-+\frac{\alpha_{L,CBP}}{1+exp(-100\frac{P_{4,t}-CP_{t}}{CP_{t}}-\beta_{L,CBP})}](log(P_{4,t})-log(P_{4,t-1}))\\
-+\kappa_{1}(log(P_{1,t})-log(P_{1,t-1}))+\kappa_{2}(log(P_{2,t})-log(P_{2,t-1}))+\kappa_{3}(log(P_{3,t})-log(P_{3,t-1}))\\
-+\phi_1log(S_{4,t-1})+\Phi log(P_{4,t-1})+\delta_{1}(Feat_{4})+\delta{2}(Display_{4})\\
-+\sum_{s=1}^{12}s_{i}Month_{i} + \sum_{h=1}^{H}h_{h}Holiday_{h}$$
-
-where $100$ is $\gamma$ is the smoothness of the transition curve (In Pauwels, Srinivasan and Franses 2007, they set the gamma parameters at the same value of 500)
+With 4 brands in the category, an example of a full model that is estimated is: 
 
 
-Follow
-(1) Check Linear Model
+$$log(S_{4,t})-log(S_{4,t-1})= c +[\alpha_{0} + \frac{\alpha_{G,HBP}}{1+exp(100(log(P_{4,t})-log(P_{4,t-1})-\beta_{G,HBP})}$$ $$+\frac{\alpha_{L,HBP}}{1+exp(-100(log(P_{4,t})-log(P_{4,t-1})-\beta_{L,HBP})}$$
+$$+\frac{\alpha_{G,CBP}}{1+exp(100\frac{P_{4,t}-CP_{t}}{CP_{t}}-\beta_{G,CBP})}$$
+$$+\frac{\alpha_{L,CBP}}{1+exp(-100\frac{P_{4,t}-CP_{t}}{CP_{t}}-\beta_{L,CBP})}](log(P_{4,t})-log(P_{4,t-1}))$$
+$$\kappa_{1}(log(P_{1,t})-log(P_{1,t-1}))+\kappa_{2}(log(P_{2,t})-log(P_{2,t-1}))+\kappa_{3}(log(P_{3,t})-log(P_{3,t-1}))$$
+$$\phi_1log(S_{4,t-1})+\Phi log(P_{4,t-1})+\delta_{1}(Feat_{4})+\delta_{2}(Display_{4})$$
+$$+\sum_{s=1}^{12}s_{i}Month_{i} + \sum_{h=1}^{H}h_{h}Holiday_{h}$$
 
-```{r estimate linear model without gap}
-#Create relevant variable for calculate
-  df_bybrand$dlogsale = log(df_bybrand$totalvolume)-log(df_bybrand$totalvolume1)
-  df_bybrand$dlogprice = log(df_bybrand$avgfinalprice)-log(df_bybrand$avgfinalprice1)
 
-lm_simple <- lm(dlogsale ~ davgpricebefore,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+where $\Phi$ is $(\phi_1)(\phi_2)$ and $100$ is $\gamma$ is the smoothness of the transition curve (In Pauwels, Srinivasan and Franses 2007, they set the gamma parameters at the same value of $500$)
+
+\newpage
+
+Initially, we want to test the linear relationship between final price, price before and discount:
+$$\alpha_0\Delta ln(P_{final, i,t})=\alpha_0\Delta ln(P_{before, i,t}-Discount_{i,t})$$
+
+Hence we expect;
+$$\alpha_{P_{final}}=\alpha_{P_{before}} = \alpha_{Discount}= \alpha_0$$
+
+We will use datta et al. (2019) full linear model sales-response model for an error-correction specification:
+
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (Linelength_{it})+\beta_{2i}\Delta (Price_{it})$$
+$$+\beta_{3i}\Delta (CompLinelength_{it})+\beta_{4i}\Delta (CompPrice_{it})$$
+$$+\gamma_{i}[S_{i,t-1} - \beta_{5i}Linelength_{i,t-1}-\beta_{6i}Price_{i,t-1}]+\beta_{7i}Trend_{t}+\beta_{8i}Holiday_{t} + Copula$$
+where
+$$\Delta X_{t} = X_{t} - X_{t-1}$$
+
+So, we first run a model
+$$(1) \Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta ln(Linelength_{it})+\beta_{2i}\Delta (Final Price_{it})+...$$
+and compare to
+
+$$(2) \Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta ln(Linelength_{it})+\beta_{2i}\Delta (Price_{beforeit} )-\beta_{2i}\Delta (Discount_{i,t})+...$$
+
+In other words, we want to compare $\beta_{2i}$ if they are equal. We use F-Test for linearity assumption.
+
+```{r Estimate full linear model, echo=FALSE}
+  df_bybrand$dLL = df_bybrand$LL - df_bybrand$LL1
+  df_bybrand$davgcompLL = df_bybrand$avgcompLL - df_bybrand$avgcompLL1
+  df_bybrand$davgcompfinalprice = df_bybrand$avgcompfinalprice - df_bybrand$avgcompfinalprice1
+
+#Calculate lm for final price and (before-discount)
+  for (i in 1:length(distinctbrandcomplete)){
+#lm for final price
+lm_est_step0_finalprice <- lm(dtotalvolume ~ dLL + davgfinalprice + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgfinalprice1 + holiday ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+message(paste("Brand:", distinctbrandcomplete[i]))
+message(paste("Coefficient of final price:", summary(lm_est_step0_finalprice)$coefficients[3])) #print coefficient of final price
+
+#lm for before&discount
+lm_est_step0_pricebefore <- lm(dtotalvolume ~ dLL + davgpricebefore + davgdiscount + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+
+#test coefficient between price before discount (Testing linear hypothesis on the coefficients of a system of equations by an F-test or Wald-test)
+  #see more https://kzee.github.io/CoeffDiff_Demo.html
+coeftest<-linearHypothesis(lm_est_step0_pricebefore, "davgpricebefore - davgdiscount = 0")
+
+message(paste("Coefficient of price before:", summary(lm_est_step0_pricebefore)$coefficients[3]))
+message(paste("Coefficient of discount:", summary(lm_est_step0_pricebefore)$coefficients[4]))
+message(paste("Rsquared of final price model:", summary(lm_est_step0_finalprice)$r.squared))
+message(paste("Rsquared of price before and discount model:", summary(lm_est_step0_pricebefore)$r.squared))
+message(paste("P-Value of testing linear hypothesis on the price before and discount coefficients:", coeftest$`Pr(>F)`[2]))
+  }
+
+remove(list=c("lm_est_step0_pricebefore","coeftest"))
+```
+
+We got a problem when running with log-log specification as our discount can be zero and that make log0 becomes NaN. (Log0 is undefined. It's not a real number, because you can never get zero by raising anything to the power of anything else.)
+```{r Estimate full linear (log-log) model, eval=FALSE}
+  df_bybrand$dlogtotalvolume = log(df_bybrand$totalvolume)-log(df_bybrand$totalvolume1)
+  df_bybrand$dlogLL = log(df_bybrand$LL) - log(df_bybrand$LL1)
+  df_bybrand$dlogavgfinalprice = log(df_bybrand$avgfinalprice) - log(df_bybrand$avgfinalprice1)
+  df_bybrand$dlogavgpricebefore = log(df_bybrand$avgpricebefore) - log(df_bybrand$avgpricebefore1)
+  df_bybrand$dlogavgdiscount = log(df_bybrand$avgdiscount) - log(df_bybrand$avgdiscount1)
+  df_bybrand$dlogavgcompLL = log(df_bybrand$avgcompLL) - log(df_bybrand$avgcompLL1)
+  df_bybrand$dlogavgcompfinalprice = log(df_bybrand$avgcompfinalprice) - log(df_bybrand$avgcompfinalprice1)
+
+#Calculate lm for final price and (before-discount)
+  for (i in 1:length(distinctbrandcomplete)){
+#lm for final price
+lmlog_est_step0_finalprice <- lm(dlogtotalvolume ~ dlogLL + dlogavgfinalprice + dlogavgcompLL + dlogavgcompfinalprice + log(totalvolume1) + log(LL1) + log(avgfinalprice1) + holiday ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+message(paste("Brand:", distinctbrandcomplete[i]))
+message(paste("Coefficient of final price:", summary(lmlog_est_step0_finalprice)$coefficients[3])) #print coefficient of final price
+
+#lm for before&discount
+lmlog_est_step0_pricebefore <- lm(dlogtotalvolume ~ dLL + dlogavgpricebefore + dlogavgdiscount + dlogavgcompLL + dlogavgcompfinalprice + log(totalvolume1) + log(LL1) + log(avgpricebefore1) + log(avgdiscount1) + holiday ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+
+#test coefficient between price before discount (Testing linear hypothesis on the coefficients of a system of equations by an F-test or Wald-test)
+  #see more https://kzee.github.io/CoeffDiff_Demo.html
+coeftest<-linearHypothesis(lmlog_est_step0_pricebefore, "davgpricebefore - davgdiscount = 0")
+
+message(paste("Coefficient of price before:", summary(lmlog_est_step0_pricebefore)$coefficients[3]))
+message(paste("Coefficient of discount:", summary(lmlog_est_step0_pricebefore)$coefficients[4]))
+message(paste("Rsquared of final price model:", summary(lmlog_est_step0_finalprice)$r.squared))
+message(paste("Rsquared of price before and discount model:", summary(lmlog_est_step0_pricebefore)$r.squared))
+message(paste("P-Value of testing linear hypothesis on the price before and discount coefficients:", coeftest$`Pr(>F)`[2]))
+}
+```
+
+
+```{r Estimate full linear model with interaction, echo=FALSE}
+#Calculate lm for final price and (before-discount)
+  for (i in 1:length(distinctbrandcomplete)){
+#lm for before&discount with interaction
+lm_est_step0_pricebefore_withoutinter <- lm(dtotalvolume ~ dLL + davgpricebefore + davgdiscount + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])    
+lm_est_step0_pricebefore_withinteraction <- lm(dtotalvolume ~ dLL + davgpricebefore*davgdiscount + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+message(paste("Brand:", distinctbrandcomplete[i]))
+message(paste("Adjusted Rsquared of price before and discount model without interaction:", summary(lm_est_step0_pricebefore_withoutinter)$adj.r.squared))
+message(paste("Adjusted Rsquared of price before and discount model with interaction:", summary(lm_est_step0_pricebefore_withinteraction)$adj.r.squared))
+  }
+remove(list=c("lm_est_step0_pricebefore_withoutinter","lm_est_step0_pricebefore_withinteraction"))
 ```
 
 
 
-
-
-```{r}
-log(vol4) - log(vol4(-1))=c(1)+(c(201)+c(222)/(1+exp(100*((log(price4)-log(price4(-1)))-c(701))))+ c(223)/(1+exp(-100*((log(price4)-log(price4(-1)))-c(702))))+ c(224)/(1+exp(100*(((price4-(price1+price2+price3)/3)/((price1+price2+price3)/3))-c(703))))+c(225)/(1+exp(-100*(((price4-(price1+price2+price3)/3)/((price1+price2+price3)/3))-c(704)))) )*(log(price4)-log(price4(-1)))+c(202)*(log(price1)-log(price1(-1)))+c(203)*(log(price2)-log(price2(-1)))+c(204)*(log(price3)-log(price3(-1)))+c(3)*log(vol4(-1))+c(4)*log(price4(-1))+c(5)*promo14+c(6)*promo24+c(7)*s2+c(8)*s3+c(9)*s4+c(10)*s5+c(11)*s6+c(12)*s7+c(13)*s8+c(14)*s9+c(15)*s10+c(16)*s11+c(17)*s12+c(18)*s13+c(19)*d1+c(20)*d2+c(21)*d3+c(22)*d4+c(23)*d5+c(24)*d6+c(25)*d7+c(26)*d8+c(27)*d9+c(28)*d10
-#Why you set the c(4) seperate from c(5)
+```{r Estimate linear model with its square and its cube, echo=FALSE}
+#Calculate lm with square and cube for price before and discount
+  for (i in 1:length(distinctbrandcomplete)){
+#lm for before&discount with its square and cube
+lm_est_step1 <- lm(dtotalvolume ~ dLL + davgpricebefore + davgdiscount + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgpricebefore^2)+I(davgpricebefore^3)+I(davgdiscount^2)+I(davgdiscount^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+message(paste("Brand:", distinctbrandcomplete[i]))
+message(paste("Adjusted Rsquared of model with square and cube:", summary(lm_est_step1)$adj.r.squared))
+  }
+remove(list=c("lm_est_step1"))
 ```
+
+```{r Estimate linear model with GAP measure, echo=FALSE}
+  #create gap measure for CBP (as HBP is already davgpricebefore and davgdiscount)
+  df_bybrand$gapcomppricebefore = df_bybrand$avgpricebefore-df_bybrand$avgcomppricebefore
+  df_bybrand$gapcompdisc = df_bybrand$avgdiscount-df_bybrand$avgcompdiscount
+
+#Calculate lm with square and cube for price before and discount
+  for (i in 1:length(distinctbrandcomplete)){
+#lm for before&discount with its square and cube
+lm_est_step1_gap <- lm(dtotalvolume ~ dLL + (gapcomppricebefore*davgpricebefore) + (gapcompdisc*davgdiscount) + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgpricebefore^2)+I(davgpricebefore^3)+I(davgdiscount^2)+I(davgdiscount^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+message(paste("Brand:", distinctbrandcomplete[i]))
+message(paste("Adjusted Rsquared of model with square and cube:", summary(lm_est_step1_gap)$adj.r.squared))
+  }
+
+remove(list=c("lm_est_step1_gap"))
+```
+
+```{r LR test between (1)Linear model (2) Linear with square and cube and (3) linear with square, cube and gap, echo=FALSE}
+  #see more https://api.rpubs.com/tomanderson_34/lrt
+  for (i in 1:length(distinctbrandcomplete)){
+#lm linear
+lm_1 <- lm(dtotalvolume ~ dLL + (gapcomppricebefore*davgpricebefore) + (gapcompdisc*davgdiscount) + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgpricebefore^2)+I(davgpricebefore^3)+I(davgdiscount^2)+I(davgdiscount^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+#lm with square and cube
+lm_2 <- lm(dtotalvolume ~ dLL + davgpricebefore + davgdiscount + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgpricebefore^2)+I(davgpricebefore^3)+I(davgdiscount^2)+I(davgdiscount^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+#lm with gap
+lm_3 <- lm(dtotalvolume ~ dLL + (gapcomppricebefore*davgpricebefore) + (gapcompdisc*davgdiscount) + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgpricebefore^2)+I(davgpricebefore^3)+I(davgdiscount^2)+I(davgdiscount^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+test_nonlinear<-lrtest(lm_1, lm_2)
+test_gap<-lrtest(lm_2, lm_3)
+
+message(paste("Brand:", distinctbrandcomplete[i]))
+message(paste("Test if we should have linear or nonlinear:", test_nonlinear$`Pr(>Chisq)`[2]))
+message(paste("Test if we should have both CBP and HBP:", test_gap$`Pr(>Chisq)`[2]))
+  }
+
+remove(list=c("lm_1","lm_2","lm_3"))
+```
+
+```{r print LR result in table, echo=FALSE}
+df_lr <- data.frame(matrix(NA, ncol = 3 , nrow = (nbrand))) 
+
+  for (i in 1:length(distinctbrandcomplete)){
+#lm linear
+lm_1 <- lm(dtotalvolume ~ dLL + (gapcomppricebefore*davgpricebefore) + (gapcompdisc*davgdiscount) + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgpricebefore^2)+I(davgpricebefore^3)+I(davgdiscount^2)+I(davgdiscount^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+#lm with square and cube
+lm_2 <- lm(dtotalvolume ~ dLL + davgpricebefore + davgdiscount + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgpricebefore^2)+I(davgpricebefore^3)+I(davgdiscount^2)+I(davgdiscount^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+#lm with gap
+lm_3 <- lm(dtotalvolume ~ dLL + (gapcomppricebefore*davgpricebefore) + (gapcompdisc*davgdiscount) + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgpricebefore^2)+I(davgpricebefore^3)+I(davgdiscount^2)+I(davgdiscount^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+test_nonlinear<-lrtest(lm_1, lm_2)
+test_gap<-lrtest(lm_2, lm_3)
+
+df_lr[i,1] <- toString(distinctbrandcomplete[i])
+df_lr[i,2] = round(test_nonlinear$`Pr(>Chisq)`[2],4) #round number to 4 decimals
+df_lr[i,3] = round(test_gap$`Pr(>Chisq)`[2],4)
+  }
+colnames(df_lr) <- c('brand','p-value for (non)linearity test','p-value for GAP test')
+
+#create decision table with 95% confidence interval or alpha = 0.05
+df_lr$lineardecision <- ifelse(df_lr$`p-value for (non)linearity test`< 0.05, 'nonlinear', 'linear')
+df_lr$GAPdecision <- ifelse(df_lr$`p-value for (non)linearity test`< 0.05 , 'fullmodel', 'linear or particularnonlinear')
+df_lr$GAPdecision <- ifelse(df_lr$`p-value for (non)linearity test`< 0.05 , 'fullmodel', 'linear or particularnonlinear')
+df_lr
+```
+
 
 \newpage
 # Analysis: My further analysis
