@@ -245,7 +245,6 @@ df_bybrand <- merge(df_bybrand,df_holiday[,2:3], by=c("vecka"))
 
 # Analysis: Replicating Pauwel et al. (2007)
 
-## Working on Price
 
 ### Estimate sales responses
 
@@ -268,7 +267,56 @@ $$+\sum_{s=1}^{12}s_{i}Month_{i} + \sum_{h=1}^{H}h_{h}Holiday_{h}$$
 where $\Phi$ is $(\phi_1)(\phi_2)$ and $100$ is $\gamma$ is the smoothness of the transition curve (In Pauwels, Srinivasan and Franses 2007, they set the gamma parameters at the same value of $500$)
 
 \newpage
+## Working on Final Price
+* First, we want to replicate Pauwel et al. (2007) by working on the final price. However, as we will work on the discount later in which contains the value of zero. It is more reasonable to work on the unit value as proposed by Hannes et al. (2019).
 
+We will use **datta et al. (2019) full linear model sales-response model** (an error-correction specification):
+
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (Linelength_{it})+\beta_{2i}\Delta (Price_{it})$$
+$$+\beta_{3i}\Delta (CompLinelength_{it})+\beta_{4i}\Delta (CompPrice_{it})$$
+$$+\gamma_{i}[S_{i,t-1} - \beta_{5i}Linelength_{i,t-1}-\beta_{6i}Price_{i,t-1}]+\beta_{7i}Trend_{t}+\beta_{8i}Holiday_{t} + Copula$$
+where
+$$\Delta X_{t} = X_{t} - X_{t-1}$$
+
+```{r replicate Pauwels with non-log model and test LR, echo=FALSE}
+df_bybrand$dLL = df_bybrand$LL - df_bybrand$LL1
+df_bybrand$davgcompLL = df_bybrand$avgcompLL - df_bybrand$avgcompLL1
+df_bybrand$davgcompfinalprice = df_bybrand$avgcompfinalprice - df_bybrand$avgcompfinalprice1
+df_bybrand$gapcompfinalprice = df_bybrand$avgfinalprice-df_bybrand$avgcompfinalprice
+  
+df_rep_lr <- data.frame(matrix(NA, ncol = 3 , nrow = (nbrand))) 
+
+#Calculate lm for final price and (before-discount)
+  for (i in 1:length(distinctbrandcomplete)){
+#lm for final price
+lm_rep_linear <- lm(dtotalvolume ~ dLL + davgfinalprice + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgfinalprice1 + holiday ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+
+#lm with its cross product; square and cub
+lm_rep_poly <- lm(dtotalvolume ~ dLL + davgfinalprice + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgfinalprice^2)+I(davgfinalprice^3),data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+
+#lm with gap
+lm_rep_gap <- lm(dtotalvolume ~ dLL + (gapcompfinalprice*davgfinalprice)  + davgcompLL + davgcompfinalprice + totalvolume1 + LL1 +avgpricebefore1 + avgdiscount1 + holiday +I(davgfinalprice^2)+I(davgfinalprice^3) ,data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],])
+
+#test likelihood ration of these three models
+test_nonlinear<-lrtest(lm_rep_linear, lm_rep_poly)
+test_gap<-lrtest(lm_rep_poly, lm_rep_gap)
+
+df_rep_lr[i,1] <- toString(distinctbrandcomplete[i])
+df_rep_lr[i,2] = round(test_nonlinear$`Pr(>Chisq)`[2],4) #round number to 4 decimals
+df_rep_lr[i,3] = round(test_gap$`Pr(>Chisq)`[2],4)
+  }
+
+colnames(df_rep_lr) <- c('brand','p-value for (non)linearity test','p-value for GAP test')
+knitr::kable(df_rep_lr, col.names = c('Brand','p-value for (non)linearity test','p-value for GAP test'))
+#create decision table with 95% confidence interval or alpha = 0.05
+df_rep_decision <- df_rep_lr
+df_rep_decision[,2] <- ifelse(df_rep_lr$`p-value for (non)linearity test`< 0.05, 'nonlinear', 'linear')
+df_rep_decision[,3] <- ifelse(df_rep_lr$`p-value for GAP test`< 0.05 , 'fullmodel', 'linear or particularnonlinear')
+knitr::kable(df_rep_decision, col.names = c('Brand','Linear Decision','GAP Decision'))
+```
+
+\newpage
+## Working on Price Before Discount and Discount
 Initially, we want to test the linear relationship between final price, price before and discount:
 $$\alpha_0\Delta ln(P_{final, i,t})=\alpha_0\Delta ln(P_{before, i,t}-Discount_{i,t})$$
 
@@ -455,7 +503,7 @@ knitr::kable(df_lr, col.names = c('Brand','p-value for (non)linearity test','p-v
 #create decision table with 95% confidence interval or alpha = 0.05
 df_decision <- df_lr
 df_decision[,2] <- ifelse(df_lr$`p-value for (non)linearity test`< 0.05, 'nonlinear', 'linear')
-df_decision[,3] <- ifelse(df_lr$`p-value for (non)linearity test`< 0.05 , 'fullmodel', 'linear or particularnonlinear')
+df_decision[,3] <- ifelse(df_lr$`p-value for GAP test`< 0.05 , 'fullmodel', 'linear or particularnonlinear')
 
 knitr::kable(df_decision, col.names = c('Brand','Linear Decision','GAP Decision'))
 remove(list=c("lm_1","lm_2","lm_3"))
