@@ -1,7 +1,7 @@
 ---
 title: "Price Discount Analysis for Cereals"
 author: "Tanetpong"
-date: "18/10/2021"
+date: "26/10/2021"
 output: pdf_document
 knit: (function(inputFile, encoding) {
   rmarkdown::render(inputFile, encoding = encoding, output_dir = "../../gen/analysis") })
@@ -270,7 +270,7 @@ where $\Phi$ is $(\phi_1)(\phi_2)$ and $100$ is $\gamma$ is the smoothness of th
 ## Working on Final Price
 * First, we want to replicate Pauwel et al. (2007) by working on the final price. However, as we will work on the discount later in which contains the value of zero. It is more reasonable to work on the unit value as proposed by Hannes et al. (2019).
 
-We will use **datta et al. (2019) full linear model sales-response model** (an error-correction specification):
+We will use **Datta et al. (2019) full linear model sales-response model** (an error-correction specification):
 
 $$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (Linelength_{it})+\beta_{2i}\Delta (Price_{it})$$
 $$+\beta_{3i}\Delta (CompLinelength_{it})+\beta_{4i}\Delta (CompPrice_{it})$$
@@ -278,6 +278,18 @@ $$+\gamma_{i}[S_{i,t-1} - \beta_{5i}Linelength_{i,t-1}-\beta_{6i}Price_{i,t-1}]+
 where
 $$\Delta X_{t} = X_{t} - X_{t-1}$$
 
+* Thus we will employ **likelihood ratio test** for this three model adapted from Datta et al. (2019) above
+
+(1) Linear Model
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (Linelength_{it})+\beta_{2i}\Delta (Price_{it}) + ... $$
+(2) Linear Model with cross products of $\Delta P_{t}$ with $\Delta P_{t}$, its squares and its cubes
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (Linelength_{it})+\beta_{2i}\Delta (Price_{it}) + \beta_{9i}{\Delta (Price_{it})}^2\beta_{10i}{\Delta (Price_{it})}^3... $$
+(3) With cross products of $\Delta P_{t}$ with other GAP measure
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (Linelength_{it})+\beta_{2i}\Delta (Price_{it}) + \beta_{9i}{\Delta (Price_{it})}^2\beta_{10i}{\Delta (Price_{it})}^3+\beta_{11i}[(GAP)\Delta (Price_{it})]... $$
+
+* P-Value for (non)linearity test is LR test between model (1) and (2)
+* P-Value for whether it is particular nonlinear model with either GAP (Historical GAP VS Competitive GAP) is LR test between model (2) and (3)
+* We report the results for model comparison tests for benchmark price type and threshold asymmetry for each brand below.
 ```{r replicate Pauwels with non-log model and test LR, echo=FALSE}
 df_bybrand$dLL = df_bybrand$LL - df_bybrand$LL1
 df_bybrand$davgcompLL = df_bybrand$avgcompLL - df_bybrand$avgcompLL1
@@ -311,7 +323,7 @@ knitr::kable(df_rep_lr, col.names = c('Brand','p-value for (non)linearity test',
 #create decision table with 95% confidence interval or alpha = 0.05
 df_rep_decision <- df_rep_lr
 df_rep_decision[,2] <- ifelse(df_rep_lr$`p-value for (non)linearity test`< 0.05, 'nonlinear', 'linear')
-df_rep_decision[,3] <- ifelse(df_rep_lr$`p-value for GAP test`< 0.05 , 'fullmodel', 'linear or particularnonlinear')
+df_rep_decision[,3] <- ifelse((df_rep_lr$`p-value for GAP test`< 0.05 & df_rep_lr$`p-value for (non)linearity test`< 0.05), 'fullmodel', 'linear or particular nonlinear')
 knitr::kable(df_rep_decision, col.names = c('Brand','Linear Decision','GAP Decision'))
 ```
 
@@ -323,7 +335,7 @@ $$\alpha_0\Delta ln(P_{final, i,t})=\alpha_0\Delta ln(P_{before, i,t}-Discount_{
 Hence we expect;
 $$\alpha_{P_{final}}=\alpha_{P_{before}} = \alpha_{Discount}= \alpha_0$$
 
-We will use **datta et al. (2019) full linear model sales-response model** (an error-correction specification):
+Again, We will use **datta et al. (2019) full linear model sales-response model** (an error-correction specification):
 
 $$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (Linelength_{it})+\beta_{2i}\Delta (Price_{it})$$
 $$+\beta_{3i}\Delta (CompLinelength_{it})+\beta_{4i}\Delta (CompPrice_{it})$$
@@ -337,7 +349,7 @@ and compare to
 
 $$(2) \Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta ln(Linelength_{it})+\beta_{2i}\Delta (Price_{beforeit} )-\beta_{2i}\Delta (Discount_{i,t})+...$$
 
-In other words, we want to compare $\beta_{2i}$ if they are equal. We use F-Test for linearity assumption. We list the coefficient of final price, price before and discount from (1) and (2) and report the adjusted-Rsquared of each model and P-value for testing linear hypothesis on the coefficients of a system of equations by an F-test.
+* In other words, we want to compare $\beta_{2i}$ if they are equal. We use F-Test for linearity assumption. We list the coefficients of final price, price before and discount from (1) and (2) and report the adjusted R-squared of each model (for each brand) and P-value for testing linear hypothesis on the coefficients of a system of equations by an F-test.
 
 ```{r Estimate full linear model with table, echo=FALSE}
   df_bybrand$dLL = df_bybrand$LL - df_bybrand$LL1
@@ -374,13 +386,13 @@ colnames(df_linear_1) <- c('brand','Coef FinalP','Coef PBefore','Coef Discount')
 colnames(df_linear_2) <- c('brand','R2 of final price model','R2 of Pbefore and discount model', 'P-Value of testing linear hypothesis')
 
 knitr::kable(df_linear_1, col.names = c('Brand','Coef FinalP','Coef PBefore','Coef Discount')) #kable from knitr. It will format the table nicely. see more https://bookdown.org/yihui/rmarkdown-cookbook/kable.html
-knitr::kable(df_linear_2, col.names = c('Brand','R2 of final price model','Rsquared of Pbefore and discount model', 'P-Value of testing linear hypothesis'))
+knitr::kable(df_linear_2, col.names = c('Brand','R2 of final price model','R2 of Pbefore and discount model', 'P-Value of testing linear hypothesis'))
 
 remove(list=c("lm_est_step0_finalprice","lm_est_step0_pricebefore","coeftest"))
 ```
 
 
-We got a problem when running with log-log specification as our discount can be zero and that make log0 becomes NaN. (Log0 is undefined. It's not a real number, because you can never get zero by raising anything to the power of anything else.) So, a linear model is used to avoid the aggregation bias that would occur when working with, for example, a log-log specification.
+* We have tried implementing log-log model but we got a problem when running with log-log specification as our discount can be zero and that make log0 becomes NaN. (Log0 is undefined. It's not a real number, because you can never get zero by raising anything to the power of anything else.) So, a linear model is used to avoid the aggregation bias that would occur when working with, for example, a log-log specification.
 
 ```{r Estimate full linear (log-log) model, eval=FALSE, include=FALSE}
   df_bybrand$dlogtotalvolume = log(df_bybrand$totalvolume)-log(df_bybrand$totalvolume1)
@@ -414,7 +426,13 @@ message(paste("P-Value of testing linear hypothesis on the price before and disc
 }
 ```
 
-We try to explore more by running linear model from previous section or model (2) without interaction and with interaction between discount and price (model 3). We reported the adjusted R-squared of model (2) and (3) respectively.
+* We try to explore more by running linear model from previous section or model (2) without interaction and with interaction between discount and price (model 3). 
+(2)
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta ln(Linelength_{it})+\beta_{2i}\Delta (Price_{beforeit} )-\beta_{2i}\Delta (Discount_{i,t})+...$$
+(3)
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta ln(Linelength_{it})+\beta_{2i}\Delta (Price_{beforeit} )-\beta_{2i}\Delta (Discount_{i,t})+ \beta_{9i}(\Delta (Price_{beforeit})(\Delta (Discount_{i,t})) + ...$$
+
+* We reported the adjusted R-squared of model (2) and (3) respectively.
 
 ```{r Estimate full linear model with interaction, echo=FALSE}
 df_interaction <- data.frame(matrix(NA, ncol = 3 , nrow = (nbrand))) 
@@ -434,7 +452,13 @@ knitr::kable(df_interaction, col.names = c('Brand','R2 of Model Without Interact
 remove(list=c("lm_est_step0_pricebefore_withoutinter","lm_est_step0_pricebefore_withinteraction"))
 ```
 
-We extend our model (2) by adding its cross product of $\Delta P_{t}$ with $\Delta P_{t}$; its square and its cubes to see if there is any evidence of linearity. Hence we add ${\Delta PBefore_{t}}^2,{\Delta Discount_{t}}^2,{\Delta PBefore_{t}}^3,{\Delta Discount_{t}}^3$. We reported adjusted R-squared of this model (model (4)).
+* We extend our model (2) by adding its cross product of $\Delta P_{t}$ with $\Delta P_{t}$; its square and its cubes to see if there is any evidence of linearity. Hence we add ${\Delta PBefore_{t}}^2,{\Delta Discount_{t}}^2,{\Delta PBefore_{t}}^3,{\Delta Discount_{t}}^3$. We reported adjusted R-squared of this model (model (4)).
+
+(4)
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta ln(Linelength_{it})+\beta_{2i}\Delta (Price_{beforeit} )-\beta_{2i}\Delta (Discount_{i,t})$$
+$$ + \beta_{9i}{\Delta (Price_{it})}^2\beta_{10i}{\Delta (Price_{it})}^3+ \beta_{11i}{\Delta (Discount_{it})}^2\beta_{12i}{\Delta (Discount_{it})}^3+...$$
+
+* We reported adjusted R-squared of this model.
 
 ```{r Estimate linear model with its square and its cube, echo=FALSE}
 df_sqrcub <- data.frame(matrix(NA, ncol = 2 , nrow = (nbrand)))
@@ -453,7 +477,15 @@ knitr::kable(df_sqrcub, col.names = c('Brand','Adjusted Rsquared of model with s
 remove(list=c("lm_est_step1"))
 ```
 
-We extend our model (4) by adding GAP measures including 1) `Gap with Historical benchmark price(before)` 2) `Gap with Competitive benchmark price(before)` 3)`Gap with Historical benchmark discount` and 4) `Gap with Competitive benchmark Discount`. We reported adjusted R-squared of this model (model (5)).
+* We extend our model (4) by adding GAP measures including 1) `Gap with Historical benchmark price(before)` 2) `Gap with Competitive benchmark price(before)` 3)`Gap with Historical benchmark discount` and 4) `Gap with Competitive benchmark Discount`. 
+
+(5)
+$$\Delta(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta ln(Linelength_{it})+\beta_{2i}\Delta (Price_{beforeit} )-\beta_{2i}\Delta (Discount_{i,t})$$
+$$ + \beta_{9i}{\Delta (Price_{it})}^2\beta_{10i}{\Delta (Price_{it})}^3+ \beta_{11i}{\Delta (Discount_{it})}^2\beta_{12i}{\Delta (Discount_{it})}^3$$
+$$ + \beta_{13i}[(GAPPrice)\Delta (Price_{it})]+ \beta_{14i}[(GAPDiscount)\Delta (Discount_{it})] +...$$
+
+* We reported adjusted R-squared of this model.
+
 ```{r Estimate linear model with GAP measure, echo=FALSE}
   #create gap measure for CBP (as HBP is already davgpricebefore and davgdiscount)
   df_bybrand$gapcomppricebefore = df_bybrand$avgpricebefore-df_bybrand$avgcomppricebefore
@@ -475,7 +507,7 @@ knitr::kable(df_sqrcub, col.names = c('Brand','Adjusted Rsquared of model with G
 remove(list=c("lm_est_step1_gap"))
 ```
 
-We then follow the criteria described by Pauwels et al. (2007) by using likelihood ratio test for linearity model (2), model(4) with cross products and model (5) with GAP measures. In case one of the LR tests is significant,we proceed with that particular nonlinear model. If both tests are significant, we proceed with the model with both HBP and CBP (with transition function)
+We then follow the criteria described by Pauwels et al. (2007) by using likelihood ratio test for linearity model comparing model (2), model(4) with cross products and model (5) with GAP measures. In case one of the LR tests is significant, we proceed with that particular nonlinear model. If both tests are significant, we proceed with the model with both HBP (Historical Benchmark Price Gap) and CBP (Competitive Benchmark Price Gap) (with transition function)
 
 ```{r LR test between (1)Linear model (2) Linear with square and cube and (3) linear with square, cube and gap, echo=FALSE}
 
