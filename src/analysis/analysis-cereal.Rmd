@@ -122,6 +122,22 @@ remove(list=c("df_competitor","weeklysalesbycompetingbrand", "df_competitorweigh
 
 
 \newpage
+# Time-series pattern of data
+We will see the time series of price before discount, final price, and discount and by brand from our samples.
+
+```{r time series plot for price before discout, final price and discount, echo=FALSE}
+#If I didnt out comma when I'm subsetting; It is throwing an error of undefined columns because you forgot the comma after defining your objective. Because we want to select the row with a given specific condition
+par(mfrow = c(3,3))
+for (i in 1:length(distinctbrandcomplete)){
+data=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],]
+plot(data$vecka, data$avgfinalprice, main = (distinctbrandcomplete[i]), xlab = "Week", ylab = "Average final price", col="blue")
+plot(data$vecka, data$avgpricebefore, main = distinctbrandcomplete[i], col="green", xlab = "Week", ylab = "Average Price Before Discount")
+plot(data$vecka, data$avgdiscount, main = distinctbrandcomplete[i], col="red",  xlab = "Week", ylab = "Average Discount")
+}
+```
+
+
+\newpage
 # Model-free evidence for absolute relationship
 We will explore relationship between price before discount, final price, discount and total sales by brand
 
@@ -243,10 +259,10 @@ df_bybrand <- merge(df_bybrand,df_holiday[,2:3], by=c("vecka"))
 
 \newpage
 
-# Analysis: Replicating Pauwel et al. (2007)
+# Pauwels et al. (2007)
 
 
-### Estimate sales responses
+*Estimate sales responses*
 
 From Error-Correction Form
 $$\Delta ln(S_{i,t}) = c + \alpha_0\Delta ln(P_{i,t})+\sum_{j=1}^{J-1} \kappa_{j}ln(P_{j,t})+\phi_{1}[ln(S_{i,t-1})-\phi_{2}ln(P_{i,t-1})]+\epsilon_{i,t}$$
@@ -267,7 +283,7 @@ $$+\sum_{s=1}^{12}s_{i}Month_{i} + \sum_{h=1}^{H}h_{h}Holiday_{h}$$
 where $\Phi$ is $(\phi_1)(\phi_2)$ and $100$ is $\gamma$ is the smoothness of the transition curve (In Pauwels, Srinivasan and Franses 2007, they set the gamma parameters at the same value of $500$)
 
 \newpage
-## Working on Final Price
+# Analysis: Working on Final Price (Replicate Pauwels et al. 2009)
 * First, we want to replicate Pauwel et al. (2007) by working on the final price. However, as we will work on the discount later in which contains the value of zero. It is more reasonable to work on the unit value as proposed by Hannes et al. (2019).
 
 We will use **Datta et al. (2019) full linear model sales-response model** (an error-correction specification):
@@ -328,7 +344,7 @@ knitr::kable(df_rep_decision, col.names = c('Brand','Linear Decision','GAP Decis
 ```
 
 \newpage
-## Working on Price Before Discount and Discount
+# Working on Price Before Discount and Discount
 Initially, we want to test the linear relationship between final price, price before and discount:
 $$\alpha_0\Delta ln(P_{final, i,t})=\alpha_0\Delta ln(P_{before, i,t}-Discount_{i,t})$$
 
@@ -535,7 +551,8 @@ knitr::kable(df_lr, col.names = c('Brand','p-value for (non)linearity test','p-v
 #create decision table with 95% confidence interval or alpha = 0.05
 df_decision <- df_lr
 df_decision[,2] <- ifelse(df_lr$`p-value for (non)linearity test`< 0.05, 'nonlinear', 'linear')
-df_decision[,3] <- ifelse(df_lr$`p-value for GAP test`< 0.05 , 'fullmodel', 'linear or particularnonlinear')
+df_decision[,3] <- ifelse((df_rep_lr$`p-value for GAP test`< 0.05 & df_rep_lr$`p-value for (non)linearity test`< 0.05), 'fullmodel', 'linear or particularnonlinear')
+
 
 knitr::kable(df_decision, col.names = c('Brand','Linear Decision','GAP Decision'))
 remove(list=c("lm_1","lm_2","lm_3"))
@@ -543,6 +560,18 @@ remove(list=c("lm_1","lm_2","lm_3"))
 
 
 \newpage
-# Analysis: My further analysis
+# Analysis: Implementing Non-Linear Model
 
-## Working on Discount
+## Working on Final Price (Replicating Pauwels et al. 2007)
+
+* We select the brand that may fit better with nonlinear model from previous step.
+
+```{r select brand nonlinear final price}
+brand_rep_fullmodel <- unique(as.factor(df_rep_decision[df_rep_lr$`p-value for (non)linearity test`< 0.05 & df_rep_lr$`p-value for GAP test` < 0.05,]$brand))
+brand_rep_particularnon <- unique(as.factor(df_rep_decision[df_rep_lr$`p-value for (non)linearity test`< 0.05 & df_rep_lr$`p-value for GAP test` > 0.05,]$brand))
+brand_rep_nonlinear <- unique(as.factor(df_rep_decision[df_rep_lr$`p-value for (non)linearity test`< 0.05,]$brand))
+```
+
+* We want to replicate the test results for nonlinearity as illustrated in Table B.1 (Appendix B) in Pauwels et al. (2007)
+
+## Working on Price Before and Discount
