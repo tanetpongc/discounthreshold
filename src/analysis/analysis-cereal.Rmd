@@ -19,7 +19,8 @@ library(lmtest) #testing for relevance of the variable using likelihood ratio
 
 ```{r read data, echo=FALSE}
 df_scanner <- read.csv("../../data/df_scanner.csv")
-df <-subset(df_scanner,category == "Cereals")
+categorydf == "Cereals"
+df <-subset(df_scanner,category == categorydf)
 df <- df %>% mutate(brand=droplevels(brand)) #Because the subset function doesnt drop the factor per se
 df <- df %>% mutate(vecka=droplevels(as.factor(vecka))) #In case some categories doesnt have full week like another
 #for simplicity, we will drop online sales for now (due to small data)
