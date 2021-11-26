@@ -19,7 +19,7 @@ library(lmtest) #testing for relevance of the variable using likelihood ratio
 
 ```{r read data, echo=FALSE}
 df_scanner <- read.csv("../../data/df_scanner.csv")
-categorydf <- "Cereals"
+categorydf <- "Chocolate"
 df <-subset(df_scanner,category == categorydf)
 df <- df %>% mutate(brand=droplevels(brand)) #Because the subset function doesnt drop the factor per se
 df <- df %>% mutate(vecka=droplevels(as.factor(vecka))) #In case some categories doesnt have full week like another
@@ -32,17 +32,23 @@ df_holiday <- read.csv("../../data/weeklyholiday.csv")
 df_holiday$vecka <- as.factor(df_holiday$vecka)
 storeformat <- c("hypermarket","convenience","supermarket")
 distinctformat<-unique(as.factor(storeformat))
+
+df <- df[df$sales_volume>=1,]
+#table(df$sales_volume) check if there is any decimal 
+#For this category, we drop less than 1
 ```
 
 ```{r Rename the brand of cereal for consistency, be careful of non-roman character, include=FALSE}
 knitr::kable(table(df$brand),col.names = c('Brand','Frequency'))
 df$brand<- revalue(df$brand, c(
-              "HONEY MONSTER"="Honey Monster",
-              #"ICA Gott Liv"="ICA","ICA Basic"="ICA", "ICA I love eco"="ICA", because they have a different perception
-              "KUNG MARKATTA"="Kung markatta",
-              "Paulun"="Pauluns",
-              "QUAKER"="Quaker",
-              "RenÃ©e Voltaire"="ReneeVoltaire", "RENÃ‰E VOLTAIRE"="ReneeVoltaire"
+              "Droste"="DROSTE",
+              "FAZER" = "Fazer",
+              "LINDT" = "Lindt",
+              "MALTESERS" = "Maltesers",
+              "MARABOU" = "Marabou",
+              "PLAMIL" = "Plamil",
+              "QUICK MILK" = "Quick Milk",
+              "RITTER SPORT" = "Ritter Sport"
               ))
 knitr::kable(table(df$brand),col.names = c('Brand After Revalue','Frequency'))
 ```
