@@ -1,5 +1,5 @@
 ---
-title: "Discount Elasticity Analysis for Cereals"
+title: "Discount Elasticity Analysis for Chocolate"
 author: "Tanetpong"
 date: "23/11/2021"
 output: pdf_document
@@ -151,9 +151,16 @@ remove(list=c("brandcharacteristic_1","brandcharacteristic_2", "branddiscountdep
 * Category Discount Breath: Average Discount Breadth of each format across 153 weeks (weeks that got promoted)
 * Category Discount Depth: Average Discount Depth of each format across 153 weeks
 * Competitive Structure: The variance in average shares across brands
+* Category Deal Dependency: Average weekly proportion of category purchased on deal.
 
 ```{r create category data frame for second-stage analysis, include=FALSE}
 categorydepth <- setDT(df_complete_discount)[, .(avgcatediscdept=mean(discountperunit/pricebeforeperunit)), .(format)]  #Should return nformat rows
+
+categorydeal <- setDT(df_complete_discount)[,.(totaldiscvolume=sum(sales_volume)), .(vecka,format)]
+categorytotal <- setDT(df_complete)[,.(totalvolume=sum(sales_volume)), .(vecka,format)]
+categoryproportion<-left_join(categorytotal,categorydeal,by=c("format","vecka")) #merge will leave the week without deal
+categoryproportion$totaldiscvolume[is.na(categoryproportion$totaldiscvolume)] <- 0
+categoryproportionformat <- setDT(categoryproportion)[,.(averagedealprop=mean(totaldiscvolume/totalvolume)), .(format)]
 
 categorybreadthweek <- setDT(df_complete_discount)[, .(Ncatediscount=uniqueN(produkt_id)), .(vecka,format)]  #Should return nformat rows
 categorybreadthweekmerge <- merge(categorybreadthweek,weeklymarketbyweek, by=c("vecka","format"))
@@ -162,9 +169,10 @@ categorybreadth<-setDT(categorybreadthweekmerge)[, .(avgcatediscbreath=mean(Ncat
 categorycompstructure <- setDT(brandcharacteristic)[, .(varmarketshare=var(avgmarketshare)), .(format)]
 
 categorycharacteristic_1 <-merge(categorydepth,categorybreadth, by=c("format"))
-categorycharacteristic <-merge(categorycharacteristic_1,categorycompstructure, by=c("format"))
+categorycharacteristic_2 <-merge(categorycharacteristic_1,categoryproportionformat, by=c("format"))
+categorycharacteristic <-merge(categorycharacteristic_2,categorycompstructure, by=c("format"))
 
-remove(list=c("categorycharacteristic_1", "categorydepth","categorybreadthweek","categorybreadthweekmerge","categorybreadth","categorycompstructure","df_complete_discount","weeklymarketbyweek"))
+remove(list=c("categorycharacteristic_1","categorycharacteristic_2","categorydeal","categorytotal","categoryproportion","categoryproportionformat", "categorydepth","categorybreadthweek","categorybreadthweekmerge","categorybreadth","categorycompstructure","df_complete_discount","weeklymarketbyweek"))
 remove(list=c("df_complete"))
 ```
 
@@ -439,7 +447,7 @@ remove(list=c("df_linear_withdiscount_hyper","df_linear_withdiscount_super","df_
 knitr::kable(brandcharacteristic[,-(5:9)], col.names = c('Format','Brand','Average Weekly Sales(Volume)','Average Weekly MarketShare'))
 knitr::kable(brandcharacteristic[,-(3:5)], col.names = c('Format','Brand','Average Discount Depth','Average Discount Breath','(5%) Disc Frequency','Freq Ratio'))
 
-knitr::kable(categorycharacteristic, col.names = c('Format','Average Discount Depth','Average Discount Breath','Var of Market Share'))
+knitr::kable(categorycharacteristic, col.names = c('Format','Average Discount Depth','Average Discount Breath','Average Deal Dependence','Var of Market Share'))
 ```
 
 * We calculated short-term elasticities (not long-term as long-term effects coefficients are insignificant with large SE), by normalizing it with $\frac{\bar{Sales_{ijk}}}{\bar{X_{ijk}}}$. In Srinivasan et al. (2004); *"When making comparisons across brands and product categories, however, one may want to control for scale differences, and convert the respective summary statistics to unit-free elasticities. We derive the elasicities at the mean by normalizing the incremental performance by the ratio of the sample performance mean to the sample price mean"*
@@ -469,4 +477,3 @@ output = paste0(path,'/discount_',categorydf,'.csv')
 
 write.csv(df_first,output)
 ```
-
