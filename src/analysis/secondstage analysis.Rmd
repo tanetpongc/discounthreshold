@@ -1,0 +1,97 @@
+---
+title: "Second-Stage Analysis"
+author: "Ned"
+date: "26/11/2021"
+output: pdf_document
+knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = encoding,
+  output_dir = "../../gen/analysis") })
+---
+
+```{r setup and require library, include=FALSE, WARNING = FALSE}
+library(data.table)
+```
+
+```{r read file from the first stage, include = FALSE}
+df_first <- read.csv("../../gen/data/secondstage/df_first.csv")
+df <- df_first[,-(1:3)]
+#categorystockimpulse <- read.csv("../../data/categorycharacteristic.csv")
+```
+
+We import the data from first stage regression calculating short-term discount elasticities and matched with our category information regarding impulsiveness and ability to stockpile. **Due to inconsistency of the scale and lack of info, we decided to drop this scale and use deal dependecy instead.**
+
+```{r drop unavailable category information, eval=FALSE}
+#categorystockimpulse_avail <- na.omit(categorystockimpulse)
+#df <- merge(df_first,categorystockimpulse[,1:4], by=c("category"))
+#df <- na.omit(df)
+#message(paste("The number of observation before dropping non-complete category info:", dim(df_first)[1]))
+#message(paste("The number of observation after dropping non-complete category info:", dim(df)[1]))
+```
+
+We report our summary statistics
+
+```{r report summary statistics, echo=FALSE}
+#report by format and category
+summarystats<-setDT(df)[, .(avgmeanelas=mean(meanelasticity),
+                            avgsdelas=mean(sdelasticity),
+                            avgbrandbread = mean(avgbranddiscountdepth),
+                            avgbranddept = mean(avgbranddiscountdepth),
+                            numberofbrand = uniqueN(brand)), .(category,format)]
+knitr::kable(summarystats, col.names = c('Category','Format','Mean Estimate','Mean SE','Brand Breadth','Brand Depth','#Brands'))
+
+
+summarystats_category<-setDT(df)[, .(avgcatediscdept=mean(avgcatediscdept),
+                            avgcatediscbreath=mean(avgcatediscbreath),
+                            avgdealprop = mean(averagedealprop),
+                            avgvar = mean(varmarketshare),
+                            numberofbrand = uniqueN(brand)), .(category)]
+
+message(paste("The number of categories in this study:", dim(summarystats_category)[1]))
+
+knitr::kable(summarystats_category, col.names = c('Category','Discount Depth','Discount Breadth','Deal Dependence','Var of MarketShare','#Brands'))
+
+summary(df)
+
+```
+
+```{r create private label variable, include=FALSE}
+privatelabel <- c("ICA","ICA Basic","ICA home","ICA Skona")
+
+df$PL <- ifelse(df$brand %in% c('ICA','ICA Basic','ICA home','ICA Skona'), 1, 0)
+
+# checkPL = df[,-(3:18)]
+```
+
+
+
+
+```{r run weighted LS, echo=FALSE}
+#For consistency we multiplied all ratio to 100 so its easy to inpret to our coefficient
+  df$avgmarketshare<-df$avgmarketshare*100
+  df$avgbranddiscountdepth<-df$avgbranddiscountdepth*100
+  df$avgbranddiscountbreath<-df$avgbranddiscountbreath*100
+  df$freqratio <- df$freqratio*100
+  df$avgcatediscdept <- df$avgcatediscdept*100
+  df$avgcatediscbreath <- df$avgcatediscbreath*100
+  df$averagedealprop<-df$averagedealprop*100
+  df$varmarketshare<-df$varmarketshare*100
+  df$format <- as.factor(df$format)
+  df$PL <- as.factor(df$PL)
+
+
+  
+fixedSecondStageLS<- lm(meanelasticity ~ format+avgmarketshare+ avgbranddiscountdepth +avgbranddiscountbreath+ freqratio + PL + avgcatediscdept + avgcatediscbreath + varmarketshare + averagedealprop, data = df, weights=(1/sdelasticity))
+
+
+summary(fixedSecondStageLS)
+
+
+fixedSecondStageLS_noweight<- lm(meanelasticity ~ format+avgmarketshare+ avgbranddiscountdepth +avgbranddiscountbreath+ freqratio + PL + avgcatediscdept + avgcatediscbreath + varmarketshare + averagedealprop, data = df)
+
+summary(fixedSecondStageLS_noweight)
+
+fixedSecondStageLS_withoutshare<- lm(meanelasticity ~ format + avgbranddiscountdepth +avgbranddiscountbreath+ freqratio + PL + avgcatediscdept + avgcatediscbreath + varmarketshare + averagedealprop, data = df, weights=(1/sdelasticity))
+
+summary(fixedSecondStageLS_withoutshare)
+
+```
+
