@@ -1,0 +1,437 @@
+---
+title: "Managebrandandcategorydata"
+author: "Ned"
+date: "22/12/2021"
+output: pdf_document
+---
+
+```{r setup and require library, include=FALSE, WARNING = FALSE}
+library(plyr) #for revalue function for brand
+library(dplyr) #for mutate factor level of brand
+library(data.table) #for set DT checking brand
+library(car) #function for testing coefficient equivalence
+library(lmtest) #function for testing nonlinearity
+```
+
+```{r read data, echo=FALSE}
+df_scanner <- read.csv("../../../data/df_scanner_butikid.csv")
+df_holiday <- read.csv("../../../data/weeklyholiday.csv")
+
+```
+
+```{r rename all brand}
+df_scanner$brand<- revalue(df_scanner$brand, c(
+            #bakingingredient
+              "Dr.OETKER"="Dr.Oetker",
+              "KUNG MARKATTA" = "Kung markatta",
+              "ODENSE" = "Odense",
+            #bathproducts
+              "DEPEND"="Depend",
+              "DETTOL" = "Dettol",
+              "Dove Men Care" = "Dove",
+              "HAWAIIAN TROPIC" = "Hawaiian Tropic",
+              "NEEDS" = "Needs",
+              "NIVEA" = "Nivea",
+              "Nivea Body" = "Nivea",
+              "Nivea Face" = "Nivea",
+              "NIVEA FACE" = "Nivea",
+              "Nivea Lip" = "Nivea",
+              "Nivea Men" = "Nivea",
+              "Nivea Shower" = "Nivea",
+              "OLAY" = "Olay",
+              "PALMETTEN" = "Palmetten",
+              "PALMOLIVE" = "Palmolive",
+            #Bottled water
+              "BONAQUA SILVER"="bonaqua silver",
+            #Canned Soup
+              "FELIX"="felix",
+              "HEINZ" = "Heinz",
+            #Canned Vegg
+              "FONTANA"="Fontana",
+            #Cereals
+              "HONEY MONSTER"="Honey Monster",
+              "KUNG MARKATTA"="Kung markatta",
+              "Paulun"="Pauluns",
+              "QUAKER"="Quaker",
+              "RenÃ©e Voltaire"="ReneeVoltaire", "RENÃ‰E VOLTAIRE"="ReneeVoltaire",
+            #Chips
+              "CRISPY"="Crispy",
+              "ESTRELLA" = "Estrella",
+              "GÃ…RDSCHIPS" = "GÃ¥rdschips",
+              "OLW" = "Olw",
+              "PRIMA" = "Prima",
+              "ROOTFRUIT" = "Rootfruit",
+            #Chocolate
+              "Droste"="DROSTE",
+              "FAZER" = "Fazer",
+              "LINDT" = "Lindt",
+              "MALTESERS" = "Maltesers",
+              "MARABOU" = "Marabou",
+              "PLAMIL" = "Plamil",
+              "QUICK MILK" = "Quick Milk",
+              "RITTER SPORT" = "Ritter Sport",
+            #cleaningProducts
+              "AIR WICK"="Air Wick",
+              "CILLIT BANG" = "Cillit Bang",
+              "TOMIK" = "Tomik",
+            #Coffees
+              "DOLCE GUSTO"="Dolce Gusto",
+              "LÃ–FBERGS" = "LÃ¶fbergs",
+              "LAVAZZA" = "Lavazza",
+            #cookies
+              "MC VITIES"="Mc Vities",
+              "MARYLAND" = "Maryland",
+            #cream
+              "ARLA"="Arla",
+              "LINDAHLS" = "Lindahls",
+            #Dishwasher & washing up
+              "FINISH"="Finish",
+            #FrozenPizza
+              "BILLYS"="Billys",
+            #Fruitjuice
+              "FONTANA"="Fontana",
+              "BRAVO" = "Bravo",
+              "Froosh" = "Froosh",
+              "GLOCKENGOLD" = "glockengold",
+              "GLOCKEN GOLD" = "glockengold",
+              "KIVIKS" = "Kiviks",
+              "Loviseberg" = "LOVISEBERG",
+              "PURE" = "Pure",
+              "RYNKEBY" = "Runkeby",
+            #Icecream
+              "Ã–STERHAGENGLASS"="Ã–STERHAGEN",
+              "ALVESTAGLASS" = "ALVESTA GLASS",
+              "BEN & JERRYS" = "Ben & Jerrys",
+              "CORNETTO" = "Cornetto",
+              "GB GLACE" = "GB Glace",
+              "HÃ„AGEN DAZS" = "HÃ¤agen Dazs",
+              "HÃ„AGEN-DAZS" = "HÃ¤agen Dazs",
+              "KLINGS" = "KLING",
+              "KLINGS GLASS" = "KLING", 
+              "SIA" = "SIA Glass",
+              "TRIUMF GLASS" = "Triumf Glass",
+              "Yollibox" = "YOLLIBOX",
+            #Jam
+              "SKIPPY"="Skippy",
+            #Laundry
+              "SOFTLAN"="Softlan",
+            #ReadyMadeMeal
+              "BIOFOOD"="Biofood",
+              "MONINI" = "Monini",
+            #Softdrinks
+              "COCA-COLA"="Coca-Cola",
+              "COCA COLA"="Coca-Cola",
+              "Coca-Cola life"="Coca-Cola",
+              "FANTA" = "Fanta",
+              "Fanta Zero" = "Fanta",
+              "MOUNTAIN DEW" = "Mountain Dew",
+              "PEPSI" = "Pepsi",
+              "SAN PELLEGRINO"="San Pellegrino",
+              "Sodastream EXTERN" = "Sodastream",
+              "Sprite Zero"="Sprite",
+              "Three Hearts"="THREE HEARTS",
+            #Sweetandcandies
+              "BUBS"="Bubs",
+              "Carletti"="CARLETTI",
+              "COTE D OR"="Cote d Or",
+              "EKORRENS" = "Ekorrens",
+              "FAZER" = "Fazer",
+              "HARIBO" = "Haribo",
+              "KONFEKTA" = "Konfekta",
+              "KOUVOLAN"="Kouvolan",
+              "LINDT" = "Lindt",
+              "MARABOU"="Marabou",
+              "MARS"="Mars",
+              "NESTLE" = "Nestle",
+              "SNICKERS" = "Snickers",
+              "TWIX" = "Twix",
+              "TOMS" = "Toms",
+            #Tobacco
+              "BIC"="Bic",
+              "BLEND"="Blend",
+              "CAMEL"="Camel",
+              "CRICKET" = "Cricket",
+              "GÃ–TEBORGS" = "GÃ¶teborgs",
+              "GÃ¶teborgs" = "Gateborgs",
+              "GENERAL" = "General",
+              "JOHN SILVER" = "John Silver",
+              "KALIBER"="Kaliber",
+              "LEVEL" = "Level",
+              "MARLBORO"="Marlboro",
+              "PRINCE"="Prince",
+              "RIGHT" = "Right",
+              "WINSTON" = "Winston",
+            #Toiletries
+              "EKULF"="Ekulf",
+              "JORDAN"="Jordan",
+              "LISTERINE"="Listerine",
+              "PEPSODENT" = "Pepsodent",
+              "SENSODYNE" = "Sensodyne",
+            #yogurt
+              "ARLA KO"="Arla Ko",
+              "FjÃ¤llyoghurt"="FjÃ¤llfil"
+              ))
+```
+
+
+
+```{r select offline and drop unexplainablevalue}
+df_online <- subset(df_scanner, saljkanal == 1)
+message(paste("The total number of weekly online sold:", dim(df_online)[1]))
+df_offline <- subset(df_scanner, saljkanal == 0)
+message(paste("The total number of weekly offline sold:", dim(df_offline)[1]))
+#dropdecimal and non-integer
+
+df <- df_offline[df_offline$sales_volume>=1,]
+df <- df_offline[!df$sales_volume%%1,]
+
+message(paste("The total n before dropping decimal and non-integer:", dim(df_offline)[1]))
+message(paste("The total n after dropping decimal and non-integer:", dim(df)[1]))
+
+
+remove(list=c("df_scanner", "df_online","df_offline"))
+
+```
+
+#Function of filtering brand
+
+```{r define function for filtering brand with complete (153) observations}
+brandfiltering_format <- function(df,format,category,nweek){
+  df_format_category <- df[df$category == category & df$format == format,]
+  brandsalecount<-setDT(df_format_category)[, .N, .(vecka,brand,format)]
+  brandweeksalestime<-setDT(brandsalecount)[, .N, .(brand,format)]#we count if the brand got shown in the scanner 
+  brandcompleteweek<-subset(brandweeksalestime, N >= nweek)
+  brandcompleteweek <- brandcompleteweek %>% mutate(brand=droplevels(brand))
+  
+distinctbrandcomplete<-unique(brandcompleteweek$brand)
+message(paste("# of remaining brands for",category,"in",format,":", dim(brandcompleteweek)[1],"(from",length(unique(df_format_category$brand)),")"))
+
+df_format_category_complete <- df_format_category[df_format_category$brand %in% brandcompleteweek$brand, ]
+df_format_category_complete <- df_format_category_complete %>% mutate(brand=droplevels(brand))
+nobsbeforedrop <- dim(df_format_category)[1]
+nobsafterdrop <- dim(df_format_category_complete)[1]
+message(paste("% of obs. maintain:", (nobsafterdrop/nobsbeforedrop)*100))
+
+return(df_format_category_complete)
+}
+df_3 <- brandfiltering_format(df,format = "supermarket",category ="Bottled water",nweek=153)
+```
+
+#Function of creating relevant variables
+  We create a function ``genrelevantvar`` that generates 1) calculate aggregate brand price/discount/unit sales of each brand from sales-weighted average across its SKUs sold in period t 2) calculated (aggregated) competitive variables and 3) generate lag variable 4) first difference of log of relevant variables (dropped the t = 1) 5) generate holiday (0/1)
+
+```{r calculate the brand price related variables and linelength or our main IV, echo=FALSE}
+
+genrelevantvar <- function(df){
+  
+#create own price
+#Price of brand b in period t, computed as a sales-weighted average across its SKUs sold in period t
+df$pricebeforeperunit <- df$spendingbeforedisc/df$sales_volume
+df$finalpriceperunit <- df$finalspending/df$sales_volume
+df$discountperunit <- df$totaldiscount/df$sales_volume
+df$nonpricecampaign <- ifelse(df$totaldiscount == 0 & df$week_campaign > 0, 1, 0)
+#calculated weight
+weeklysalesbybrand<-setDT(df)[, .(totalsales=sum(sales_volume),LL=uniqueN(produkt_id),totalnonpricecampaign=sum(nonpricecampaign)), .(vecka,brand,format)] #this will return n brand x 3 formats x 153 weeks
+df_weightcalc <- merge(df,weeklysalesbybrand, by=c("vecka","brand","format"))
+df_weightcalc$wp <- df_weightcalc$sales_volume/df_weightcalc$totalsales
+    # check<-setDT(df_weightcalc)[, .(totalwp=sum(wp)), .(vecka,brand,format)] #check if weight sum to 1
+df_weightcalc$avgpricebefore <- df_weightcalc$pricebeforeperunit*df_weightcalc$wp
+df_weightcalc$avgfinalprice <- df_weightcalc$finalpriceperunit*df_weightcalc$wp
+df_weightcalc$avgdiscount <- df_weightcalc$discountperunit*df_weightcalc$wp
+df_bybrand <- setDT(df_weightcalc)[, .(totalvolume=sum(sales_volume),totalvalue=sum(finalspending),LL=mean(LL),avgpricebefore=sum(avgpricebefore),avgfinalprice=sum(avgfinalprice),avgdiscount=sum(avgdiscount),nonpricecampaign=sum(totalnonpricecampaign)), .(vecka,brand,format)]
+df_bybrand$nonpricecampaign <- ifelse(df_bybrand$nonpricecampaign > 0, 1, 0)
+
+#create own depth
+df_bybrand$depth <- df_bybrand$avgdiscount/df_bybrand$avgpricebefore
+df_bybrand$nondepth <- (1-df_bybrand$depth)
+
+#create competitive info
+
+
+distinctbrandcomplete <- unique(df$brand)
+nbrand<-length(distinctbrandcomplete)
+nweek<-length(unique(df$vecka))
+
+df_rep <- data.frame(matrix(NA, ncol = 16 , nrow = ((nbrand)*(nweek)))) #create an empty table for iteration information of each brand
+
+#We calculate competitors info for each brand and then replace in the df_rep (rbind each brand)
+for (i in 1:length(distinctbrandcomplete)){
+df_competitor=df_bybrand[df_bybrand$brand != distinctbrandcomplete[i],]
+weeklysalesbycompetingbrand<-setDT(df_competitor)[, .(totalmarketvalue=sum(totalvalue)), .(vecka)]
+df_competitorweightcalc <- merge(df_competitor,weeklysalesbycompetingbrand, by=c("vecka"))
+df_competitorweightcalc$wp <- df_competitorweightcalc$totalvalue/df_competitorweightcalc$totalmarketvalue
+  # check<-setDT(df_competitorweightcalc)[, .(totalwp=sum(wp)), .(vecka)] #check if weight sum to 1
+df_competitorweightcalc$avgcompLL <- df_competitorweightcalc$LL*df_competitorweightcalc$wp
+df_competitorweightcalc$avgcomppricebefore <- df_competitorweightcalc$avgpricebefore*df_competitorweightcalc$wp
+df_competitorweightcalc$avgcompfinalprice <- df_competitorweightcalc$avgfinalprice*df_competitorweightcalc$wp
+df_competitorweightcalc$avgcompdiscount <- df_competitorweightcalc$avgdiscount*df_competitorweightcalc$wp
+df_competitorinfo <- setDT(df_competitorweightcalc)[, .(avgcompLL=sum(avgcompLL),avgcomppricebefore=sum(avgcomppricebefore), avgcompfinalprice=sum(avgcompfinalprice), avgcompdiscount=sum(avgcompdiscount)), .(vecka)]
+df_own=df_bybrand[df_bybrand$brand == distinctbrandcomplete[i],]
+df_own <- merge(df_own,df_competitorinfo, by=c("vecka"))
+df_rep[(1+((i-1)*153)):(153+((i-1)*153)),] = df_own
+df_rep[(1+((i-1)*153)):(153+((i-1)*153)),2] <- toString(distinctbrandcomplete[i])
+}
+colnames(df_rep) <- colnames(df_own) #replace empty table column name with the original column name
+df_rep[,1] <- df_own[,1] #the vecka infor is not replaced so we have to replace from the original table
+df_rep$brand<-as.factor(df_rep$brand)
+df_bybrand <- df_rep
+
+#generate lag variables
+lag_1 <- function(x, k = 1) head(c(rep(NA, k), x), length(x))
+df_bybrand<-df_bybrand [order(df_bybrand$brand,df_bybrand$vecka),]
+df_bybrand$totalvolume1 <- ave(df_bybrand$totalvolume, df_bybrand$brand, FUN= lag_1)
+df_bybrand$totalvalue1 <- ave(df_bybrand$totalvalue, df_bybrand$brand, FUN= lag_1)
+df_bybrand$LL1 <- ave(df_bybrand$LL, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgfinalprice1 <- ave(df_bybrand$avgfinalprice, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgpricebefore1 <- ave(df_bybrand$avgpricebefore, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgdiscount1 <- ave(df_bybrand$avgdiscount, df_bybrand$brand, FUN= lag_1)
+df_bybrand$nondepth1 <- ave(df_bybrand$nondepth, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgcompLL1 <- ave(df_bybrand$avgcompLL, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgcompfinalprice1 <- ave(df_bybrand$avgfinalprice, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgcomppricebefore1 <- ave(df_bybrand$avgpricebefore, df_bybrand$brand, FUN= lag_1)
+df_bybrand$avgcompdiscount1 <- ave(df_bybrand$avgdiscount, df_bybrand$brand, FUN= lag_1)
+
+#create the first difference of log variables
+df_bybrand <- na.omit(df_bybrand) #We drop week 0
+df_bybrand$dlogtotalvolume <- log(df_bybrand$totalvolume)-log(df_bybrand$totalvolume1)
+df_bybrand$dlogavgfinalprice <- log(df_bybrand$avgfinalprice)-log(df_bybrand$avgfinalprice1)
+df_bybrand$dlogavgpricebefore <- log(df_bybrand$avgpricebefore)-log(df_bybrand$avgpricebefore1)
+df_bybrand$dlognondepth <- df_bybrand$nondepth-df_bybrand$nondepth1
+df_bybrand$dlogLL = log(df_bybrand$LL) - log(df_bybrand$LL1)
+df_bybrand$dlogavgcompLL = log(df_bybrand$avgcompLL) - log(df_bybrand$avgcompLL1)
+df_bybrand$dlogavgcompfinalprice = log(df_bybrand$avgcompfinalprice) - log(df_bybrand$avgcompfinalprice1)
+
+#create a holiday variable
+df_holiday$vecka <- as.factor(df_holiday$vecka)
+df_bybrand <- merge(df_bybrand,df_holiday[,2:3], by=c("vecka"))
+
+return(df_bybrand)
+}
+
+
+df_4 <- genrelevantvar(df=df_3)
+
+```
+
+
+#Function of testing coefficient of price before VS discount.
+This function will return the estimated coefficients of price before, discount and whether these coefficients are statistically significant.
+
+
+```{r calculate the brand price related variables and linelength or our main IV, echo=FALSE}
+
+test_discount_coef <- function(aggregate_df){
+  
+  distinctbrandcomplete <- unique(aggregate_df$brand)
+  nbrand<-length(distinctbrandcomplete)
+  
+  
+  df_discount_coef_test <- data.frame(matrix(NA, ncol = 6 , nrow = (nbrand))) 
+  for (i in 1:length(distinctbrandcomplete)){
+#lm for before&discount
+
+
+lm_discount <- lm(dlogtotalvolume ~ dlogLL + dlogavgpricebefore + dlognondepth + dlogavgcompLL + dlogavgcompfinalprice  + log(totalvolume1) + log(LL1) +log(avgpricebefore1) + log(nondepth1) + holiday ,data=aggregate_df[aggregate_df$brand == distinctbrandcomplete[i],])
+
+
+#test coefficient between price before discount (Testing linear hypothesis on the coefficients of a system of equations by an F-test or Wald-test)
+  #see more https://kzee.github.io/CoeffDiff_Demo.html
+coeftest<-linearHypothesis(lm_discount, "dlogavgpricebefore - dlognondepth = 0")
+
+#Export Discount coefficient across format
+
+df_discount_coef_test[i,1] <- toString(distinctbrandcomplete[i])
+df_discount_coef_test[i,2] = summary(lm_discount)$coefficients[3,1]
+df_discount_coef_test[i,3] = summary(lm_discount)$coefficients[3,2]
+df_discount_coef_test[i,4] = summary(lm_discount)$coefficients[4,1]
+df_discount_coef_test[i,5] = summary(lm_discount)$coefficients[4,2]
+df_discount_coef_test[i,6] = round(coeftest$`Pr(>F)`[2],4)
+
+colnames(df_discount_coef_test) <- c('brand','Coef PriceBefore','Sd PriceBefore','Coef NonDiscount','Sd NonDiscount','p coef test')
+  }
+df_discount_coef_test$pricedecision <- ifelse(df_discount_coef_test$`p coef test`< 0.05, 'discount', 'finalprice')
+
+return(df_discount_coef_test)
+  
+}
+
+df_5 <- test_discount_coef(aggregate_df = df_4)
+```
+
+#Function of testing nonlinearity
+
+
+```{r calculate the brand price related variables and linelength or our main IV, echo=FALSE}
+
+test_nonlinearity <- function(aggregate_df,discount_coef_result){
+  
+  df_merge_result <- merge(aggregate_df,discount_coef_result, by=c("brand"))
+  
+  df_finalprice <- df_merge_result[df_merge_result$pricedecision == 'finalprice', ]
+  df_finalprice <- df_finalprice %>% mutate(brand=droplevels(brand))
+  distinctbrand_finalprice <- unique(df_finalprice$brand)
+  nbrand_finalprice<-length(distinctbrand_finalprice)
+  
+  df_discount <- df_merge_result[df_merge_result$pricedecision == 'discount', ]
+  df_discount <- df_discount %>% mutate(brand=droplevels(brand))
+  distinctbrand_discount <- unique(df_discount$brand)
+  nbrand_discount<-length(distinctbrand_discount)
+
+   
+ df_finalprice_lr <- data.frame(matrix(NA, ncol = 4 , nrow = (nbrand_finalprice)))  
+  for (i in 1:length(distinctbrand_finalprice)){  
+  
+lm_finalprice <- lm(dlogtotalvolume ~ dlogLL + dlogavgfinalprice + dlogavgcompLL + dlogavgcompfinalprice  + log(totalvolume1) + log(LL1) +log(avgfinalprice1) + holiday ,data=df_finalprice[df_finalprice$brand == distinctbrand_finalprice[i],])
+
+lm_finalprice_price2 <- lm(dlogtotalvolume ~ dlogLL + dlogavgfinalprice + I(dlogavgfinalprice^2) + dlogavgcompLL + dlogavgcompfinalprice  + log(totalvolume1) + log(LL1) +log(avgfinalprice1) + holiday ,data=df_finalprice[df_finalprice$brand == distinctbrand_finalprice[i],])
+
+test_price<-lrtest(lm_finalprice, lm_finalprice_price2)
+
+df_finalprice_lr[i,1] <- toString(distinctbrand_finalprice[i])
+df_finalprice_lr[i,2] = round(test_price$`Pr(>Chisq)`[2],4)
+df_finalprice_lr[i,3] = "NA"
+df_finalprice_lr[i,4] = "NA"
+}  
+  
+ df_discount_lr <- data.frame(matrix(NA, ncol = 4 , nrow = (nbrand_discount)))  
+  for (i in 1:length(distinctbrand_discount)){
+
+lm_discount <- lm(dlogtotalvolume ~ dlogLL + dlogavgpricebefore + dlognondepth + dlogavgcompLL + dlogavgcompfinalprice  + log(totalvolume1) + log(LL1) +log(avgpricebefore1) + log(nondepth1) + holiday ,data=df_discount[df_discount$brand == distinctbrand_discount[i],])
+
+lm_discount_price2 <- lm(dlogtotalvolume ~ dlogLL + dlogavgpricebefore + I(dlogavgpricebefore^2) + dlognondepth + dlogavgcompLL + dlogavgcompfinalprice  + log(totalvolume1) + log(LL1) +log(avgpricebefore1) + log(nondepth1) + holiday ,data=df_discount[df_discount$brand == distinctbrand_discount[i],])
+
+lm_discount_discount2 <- lm(dlogtotalvolume ~ dlogLL + dlogavgpricebefore + dlognondepth +I(dlognondepth^2) + dlogavgcompLL + dlogavgcompfinalprice  + log(totalvolume1) + log(LL1) +log(avgpricebefore1) + log(nondepth1) + holiday ,data=df_discount[df_discount$brand == distinctbrand_discount[i],])
+
+lm_discount_pricediscount2 <- lm(dlogtotalvolume ~ dlogLL + dlogavgpricebefore + I(dlogavgpricebefore^2) + dlognondepth +I(dlognondepth^2) + dlogavgcompLL + dlogavgcompfinalprice  + log(totalvolume1) + log(LL1) +log(avgpricebefore1) + log(nondepth1) + holiday ,data=df_discount[df_discount$brand == distinctbrand_discount[i],])
+
+test_price<-lrtest(lm_discount, lm_discount_price2)
+test_discount<-lrtest(lm_discount, lm_discount_discount2)
+test_price_discount <- lrtest(lm_discount,lm_discount_pricediscount2)
+
+df_discount_lr[i,1] <- toString(distinctbrand_discount[i])
+df_discount_lr[i,2] = round(test_price$`Pr(>Chisq)`[2],4)
+df_discount_lr[i,3] = round(test_discount$`Pr(>Chisq)`[2],4)
+df_discount_lr[i,4] = round(test_price_discount$`Pr(>Chisq)`[2],4)
+  }
+ 
+df_nonlinearity_test <- rbind(df_discount_lr,df_finalprice_lr)
+colnames(df_nonlinearity_test) <- c('brand','p-value-price^2','p-value-discount^2','p-value-priceanddiscount^2')
+
+#give the decision in this nonlinearitystep
+
+df_nonlinearity_test$linearitydecision <- "nonlinearity"
+df_nonlinearity_test$linearitydecision[df_nonlinearity_test$`p-value-price^2` >= 0.05 & df_nonlinearity_test$`p-value-discount^2` =="NA"] <- "linearity"
+df_nonlinearity_test$linearitydecision[df_nonlinearity_test$`p-value-price^2` >= 0.05 & df_nonlinearity_test$`p-value-discount^2` >= 0.05 & df_nonlinearity_test$`p-value-priceanddiscount^2`>=0.05] <- "linearity"
+
+df_nonlinearity_test$nonlinearitydecision <- "linearity"
+df_nonlinearity_test$nonlinearitydecision[df_nonlinearity_test$`p-value-price^2` < 0.05 & df_nonlinearity_test$`p-value-discount^2` =="NA"] <- "finalpricenonlinearity"
+df_nonlinearity_test$nonlinearitydecision[df_nonlinearity_test$`p-value-price^2` < 0.05 & df_nonlinearity_test$`p-value-discount^2` >= 0.05] <- "pricebeforenonlinearity"
+df_nonlinearity_test$nonlinearitydecision[df_nonlinearity_test$`p-value-price^2` < 0.05 & df_nonlinearity_test$`p-value-discount^2` < 0.05] <- "discountnonlinearity"
+df_nonlinearity_test$nonlinearitydecision[df_nonlinearity_test$`p-value-price^2` < 0.05 & df_nonlinearity_test$`p-value-discount^2` < 0.05 & df_nonlinearity_test$`p-value-priceanddiscount^2`< 0.05] <- "priceanddiscountnonlinearity"
+
+return(df_nonlinearity_test)
+  
+}
+
+df_6 <- test_nonlinearity(aggregate_df = df_4,discount_coef_result = df_5)
+```
