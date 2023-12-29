@@ -1,11 +1,4 @@
-# Discounthreshold
+# Navigating Asymmetry: Insights from Aggregate and Choice Models on the Influence of Regular Prices and Discounts on Retailer Performances
 
-## Research Question:
-1) Is price elasticity and discount (promotional price) elasticity the same?
-	Why? CB experiments show that the consumers process price and discount differently. Yet, it is unclear in term of generalizability.
-2) Is the discount perception the same across categories/brands format and channels?
-	Why? It is well established that there are differences in price perception across categories, brands, formats, and channel. Hence, I expect this to be the same for how consumers perceive the discount as well. Hence there are moderating roles of categories, brand, and channel (format?) on (1) types of benchmark (historical or competitive) (2) size of thresholds for gains and losses
-3) Is it possible to draw discount threshold (in addition to price threshold)? 
-
-What about assortment? [This could be called line length (see Datta et al. 2019)]
-Would it be possible to add interaction between price and discount (Like the threshold is different across initial price)?
+## Abstract:
+The purpose of this study is to understand how retail promotional prices, which can be decomposed into regular prices and discounts, work differently across store formats. Particularly, this study investigates the asymmetric elasticities of gains and losses between regular prices and discounts and the potential price encoding mechanisms when customers shopped across hypermarket and supermarket. Using the scanner data from 2014 to 2016 which comes from a membership database of a grocery retailer in The Nordics, we employed the aggregate sales response model to estimate the relevant elasticities of store brand and their potential asymmetricities between gains and losses as well as individual choice model to explore the price encoding mechanisms. Our empirical results suggest that discounts are more effective especially for hypermarket format and there are asymmetric elasticities in discounts. This implies that customers react more significantly when discounts offered are increased.
