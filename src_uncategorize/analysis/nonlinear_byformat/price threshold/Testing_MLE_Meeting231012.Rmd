@@ -1,0 +1,235 @@
+---
+title: "Estimating Non Linear Threshold for Selected Brands (Simple)"
+output: html_notebook
+---
+
+We import two datasets (Bottled Water Category) that has statistical evidence for "historical price gap" (Ramlosa at Supermarket) and "both historical and competitive price gap" (Loka at Supermarket)
+
+```{r load relevant library}
+library(dplyr) #for mutate factor
+library(data.table) #turning results in table
+```
+
+```{r import dataset}
+df_his <- read.csv("../../../../src/analysis/nonlinear_byformat/price threshold/ramlosa_super_histgap.csv")
+```
+
+
+(1) Simple Model to calculate error (correction) term: $$ (1) ln(S_{i,t-1}) = a_{0i}+a_{1i}ln(P_{it-1}) + e_{it} $$ 
+```{r generate error term for ECM}
+lm_sim_his <- lm(log(totalvolume1) ~ log(avgfinalprice1), data = df_his) 
+df_his$et_hat = residuals(lm_sim_his)
+```
+
+(2) Ideally we want to estimate:
+$$(2) \Delta ln(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (P_{it})+\beta_{2i}\Delta ln(CompP_{it}) + \phi_1e_it +  ... $$
+Where:
+
+$\beta_{1i}$ for brand that has statistical evidence for "historical price gap" is $$F(GAP) = \alpha_{0i}+ \alpha_{GH}f(HistPGap_{i,t})_G+ \alpha_{GL}f(HistPGap_{i,t})_L$$ 
+
+
+To incorporate $F(GAP)$ in (2) and estimate the parameters, we need Maximum likelihood estimation
+
+For simplicity, we will set initial value of each $\beta_ki$ based on the linear estimation (2) (i.e., $\alpha_{0i} = \beta_{1i}$)
+
+Our challenging task is to set the initial value for $\alpha_{HG}$, $\alpha_{HL}$, $\alpha_{CG}$, $\alpha_{CL}$ which affect the curvature (slope or elasticity) of $\Delta P_{it}$ 
+
+and further $b_{HG}$,$b_{HL}$,$b_{CG}$,$b_{CL}$ which are nested in $f(HistP_{i,t})_G$, $f(HistP_{i,t})_L$, $f(CompP_{i,t})_G$, $f(CompP_{i,t})_L$ (respectively) indicating the inflection points (or threshold)
+
+
+We start with Ramlosa at Supermarket that has statistical evidence for "historical price gap"
+
+Objective: We want to estimate nonlinear model with historical price gap:
+$$\Delta ln(S_{i,t}) = c +\{\alpha_{0}
+ + \frac{\alpha_{HG}}{1+exp(\gamma(HistPGap_{i,t}))-b_{HG})} +\frac{\alpha_{HL}}{1+exp(-\gamma(HistPGap_{i,t}))-b_{HL})}\}\Delta ln(P_{i,t})\\ 
++ \kappa_{1}\Delta ln(CompP_{i,t}) + \phi_1[ln(S_{i,t-1})+\phi_2 ln(P_{i,t-1}))]$$
+
+
+```{r Run linear model for starting value (HistGap)}
+#run linear regression, for simplicity, we will not add other marketing-related and time-related variables at this stage of documenting
+lm_his_linear <- lm(dlogtotalvolume ~ dlogavgfinalprice + dlogavgcompfinalprice + et_hat ,data=df_his)
+
+summary(lm_his_linear)
+
+alpha_0_his <- summary(lm_his_linear)$coefficients[2,1]
+c_his <- summary(lm_his_linear)$coefficients[1,1]
+kappa_1_his <- summary(lm_his_linear)$coefficients[3,1]
+phi_1_his <- summary(lm_his_linear)$coefficients[4,1]
+```
+
+
+
+```{r MLE Setting (HistGap) without comp}
+#Define loglikelihood function for nonlinear model with historical price gap
+  #WITHOUT COMPETITIVE PRICE
+logL_nonlinear_his <- function(parvec){
+  
+  F_H_G <- 1/(1+exp(gamma*(df_his$hgap - parvec[4])))
+  F_H_L <- 1/(1+exp(-gamma*(df_his$hgap - parvec[6])))
+  
+  
+  ut <- df_his$dlogtotalvolume - (parvec[1] + (parvec[2] 
+                                         + parvec[3]*F_H_G + parvec[5]*F_H_L)*df_his$dlogavgfinalprice 
+                            + parvec[7]*df_his$et_hat)
+  logL <- sum (-0.5* log(parvec[8]) - 0.5*ut^2/parvec[8] )
+  return(-logL)
+}
+  gamma <- 100 #assumed
+
+  parvec_1 <- c_his
+  parvec_2 <- alpha_0_his
+  parvec_3 <- -0.5 #Guessing number from SE of price elasticity
+  parvec_4 <- 0.17 #Guessing number from SD of historical price gap
+  parvec_5 <- 0.25 #Guessing number from SE of price elasticity
+  parvec_6 <- 0.5 #Guessing number from SD of historical price gap (negative because it's loss)
+  parvec_7 <- kappa_1_his
+  parvec_8 <- 1
+  Start_v <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8)
+  
+MLE_logL_nonlinear_his = optim(Start_v,
+                  fn = logL_nonlinear_his, # function to maximize
+                  method = "BFGS",
+                  #method = "SANN",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  
+)
+
+par.est<-MLE_logL_nonlinear_his$par
+#par.est
+# Calculating the Hessian. Needed to compute std. for estimates
+OI<-solve(MLE_logL_nonlinear_his$hessian)
+par.se<-sqrt(diag(OI))
+
+par_name <- c("constant", "price_elas" ,"hgap_gain_slope","hgap_gain_threshold","hgap_loss_slope","hgap_loss_threshold",
+                   "ethat","model_SE")
+par <- data.table(cbind(par_name,par.est,par.se))
+par$tstat <- as.numeric(par$par.est)/as.numeric(par$par.se)
+
+par  
+```
+
+
+
+```{r Estimate with NLS (Histgap)}
+
+LS_nonlinear_his <- function(parvec){
+  
+  F_H_G <- 1/(1+exp(gamma*(df_his$hgap - parvec[4])))
+  F_H_L <- 1/(1+exp(-gamma*(df_his$hgap - parvec[6])))
+  
+
+  ut <- df_his$dlogtotalvolume - (parvec[1] + (parvec[2] 
+                                         + parvec[3]*F_H_G + parvec[5]*F_H_L)*df_his$dlogavgfinalprice 
+                            + parvec[7]*df_his$dlogavgcompfinalprice          
+                            + parvec[8]*df_his$et_hat)
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 100 #assumed
+
+  parvec_1 <- c_his
+  parvec_2 <- alpha_0_his
+  parvec_3 <- -0.1 #Guessing number from SE of price elasticity
+  parvec_4 <- 0.17 #Guessing number from SD of historical price gap
+  parvec_5 <- 0.1 #Guessing number from SE of price elasticity
+  parvec_6 <-  -0.17 #Guessing number from SD of historical price gap (negative because it's loss)
+  parvec_7 <- kappa_1_his
+  parvec_8 <- phi_1_his
+
+
+
+  Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8)
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear_his, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  )
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(152-8) #152 is n
+MSE_calculated
+
+par_constraint.est<-LS_logL_nonlinear_his_constraint$par
+#par.est
+
+par_constraint_name <- c("constant", "price_elas" ,"hgap_gain_slope","hgap_gain_threshold","hgap_loss_slope","hgap_loss_threshold",
+                   "compprice","ethat")
+par_constraint <- data.table(cbind(par_constraint_name,par_constraint.est))
+
+par_constraint
+```
+```{r MLE Setting (HistGap) with Comp}
+#Define loglikelihood function for nonlinear model with historical price gap
+  #WITH COMPETITIVE PRICE
+logL_nonlinear_his <- function(parvec){
+  
+  F_H_G <- 1/(1+exp(gamma*(df_his$hgap - parvec[4])))
+  F_H_L <- 1/(1+exp(-gamma*(df_his$hgap - parvec[6])))
+  
+  
+  ut <- df_his$dlogtotalvolume - (parvec[1] + (parvec[2] 
+                                         + parvec[3]*F_H_G + parvec[5]*F_H_L)*df_his$dlogavgfinalprice 
+                            + parvec[7]*df_his$dlogavgcompfinalprice          
+                            + parvec[8]*df_his$et_hat)
+  logL <- sum (-0.5* log(parvec[9]) - 0.5*ut^2/parvec[9] )
+  return(-logL)
+}
+
+
+  parvec_9 <- MSE_calculated
+
+  Start_v <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,
+               parvec_9)
+  
+MLE_logL_nonlinear_his = optim(Start_v,
+                  fn = logL_nonlinear_his, # function to maximize
+                  method = "BFGS",
+                  #method = "SANN",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  
+)
+
+par.est<-MLE_logL_nonlinear_his$par
+#par.est
+# Calculating the Hessian. Needed to compute std. for estimates
+OI<-solve(MLE_logL_nonlinear_his$hessian)
+par.se<-sqrt(diag(OI))
+
+par_name <- c("constant", "price_elas" ,"hgap_gain_slope","hgap_gain_threshold","hgap_loss_slope","hgap_loss_threshold",
+                   "compprice","ethat","model_SE")
+par <- data.table(cbind(par_name,par.est,par.se))
+par$tstat <- as.numeric(par$par.est)/as.numeric(par$par.se)
+
+par  
+```
+
+
+
+```{r Estimate MLE WITH CONSTRAINT (Histgap) test 1}
+lower_v <- c(-99,-99,-99,-99,-99,-99,-99,-99,0.1)
+
+MLE_logL_nonlinear_his_constraint = optim(Start_v,
+                  fn = logL_nonlinear_his, # function to maximize
+                  method = "L-BFGS-B",
+                  lower = lower_v,
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+par_constraint.est<-MLE_logL_nonlinear_his_constraint$par
+#par.est
+# Calculating the Hessian. Needed to compute std. for estimates
+OI_constraint<-solve(MLE_logL_nonlinear_his_constraint$hessian)
+par_constraint.se<-sqrt(diag(OI_constraint))
+
+par_constraint_name <- c("constant", "price_elas" ,"hgap_gain_slope","hgap_gain_threshold","hgap_loss_slope","hgap_loss_threshold",
+                   "compprice","ethat","model_SE")
+par_constraint <- data.table(cbind(par_constraint_name,par_constraint.est,par_constraint.se))
+
+par_constraint
+```

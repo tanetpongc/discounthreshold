@@ -1,0 +1,285 @@
+---
+title: "Managebrandandcategorydata for (aggregate model) discount loss threshold"
+author: "Ned"
+date: "22/12/2021"
+output: pdf_document
+---
+
+```{r setup and require library, include=FALSE, WARNING = FALSE}
+library(dplyr) #for mutate factor level of brand
+library(data.table) #for set DT checking brand
+library(ggplot2)
+```
+
+```{r read data, include=FALSE}
+df <- read.csv("../../../../data/df_scanner_discount_threshold_filteredSKU.csv")
+df_holiday <- read.csv("../../../../data/weeklyholiday.csv")
+```
+
+
+#Function of creating relevant variables
+
+```{r create trend variable, include=FALSE}
+#very bad way of doing
+df_holiday<-df_holiday [order(df_holiday$vecka),]
+df_holiday$trend <- seq(1:length(unique(df_holiday$vecka)))
+```
+
+  We create a function ``genrelevantvar_perSKU`` that generates 1) calculate aggregate brand price/discount/unit sales of each brand from sales-weighted average across its SKUs sold in period t 2) calculated (aggregated) competitive variables and 3) generate lag variable 4) first difference of log of relevant variables (dropped the t = 1) 5) generate holiday (0/1)
+  
+
+```{r calculate the brand price related variables and linelength or our main IV, echo=FALSE}
+
+genrelevantvar_perSKU <- function(df,format,category){
+  df <- df[df$category == category & df$format == format,]
+  
+#Price of brand b in period t, computed as a sales-weighted average across its SKUs sold in period t
+df$pricebeforeperunit <- df$spendingbeforedisc/df$sales_volume
+df$finalpriceperunit <- df$finalspending/df$sales_volume
+df$discountperunit <- df$totaldiscount/df$sales_volume
+df$nonpricecampaign <- ifelse(df$totaldiscount == 0 & df$week_campaign > 0, 1, 0)
+df$pricecampaign <- ifelse(df$totaldiscount != 0 & df$week_campaign > 0, 1, 0)
+#calculated weight
+weeklysalesbySKU<-setDT(df)[, .(totalsales_SKU=sum(sales_volume),pricebeforeperunit=mean(pricebeforeperunit),finalpriceperunit=mean(finalpriceperunit),discountperunit=mean(discountperunit)), .(produkt_id,vecka,brand_PLNB)] 
+weeklysalesbybrand<-setDT(df)[, .(totalsales_brand=sum(sales_volume),LL=uniqueN(produkt_id),totalnonpricecampaign=sum(nonpricecampaign),totalpricecampaign=sum(pricecampaign)), .(vecka,brand_PLNB)] 
+
+df_weightcalc_SKUbrand<- merge(weeklysalesbySKU,weeklysalesbybrand, by=c("vecka","brand_PLNB"))
+df_weightcalc_SKUbrand$wp <- df_weightcalc_SKUbrand$totalsales_SKU/df_weightcalc_SKUbrand$totalsales_brand
+#check<-setDT(df_weightcalc_SKUbrand)[, .(totalwp=sum(wp)), .(vecka,brand_PLNB)] #check if weight sum to 1
+
+df_weightcalc_SKUbrand$avgpricebefore <- df_weightcalc_SKUbrand$pricebeforeperunit*df_weightcalc_SKUbrand$wp
+df_weightcalc_SKUbrand$avgfinalprice <- df_weightcalc_SKUbrand$finalpriceperunit*df_weightcalc_SKUbrand$wp
+df_weightcalc_SKUbrand$avgdiscount <- df_weightcalc_SKUbrand$discountperunit*df_weightcalc_SKUbrand$wp
+df_bybrand <- setDT(df_weightcalc_SKUbrand)[, .(totalvolume=sum(totalsales_SKU),LL=uniqueN(produkt_id),avgpricebefore=sum(avgpricebefore),avgfinalprice=sum(avgfinalprice),avgdiscount=sum(avgdiscount),totalbrandnonpricecampaign=mean(totalnonpricecampaign),totalbrandpricecampaign=mean(totalpricecampaign)), .(vecka,brand_PLNB)]
+
+brand_campaign_week <- setDT(df_bybrand)[, .(totalnonpricecampaign=sum(totalbrandnonpricecampaign),totalpricecampaign=sum(totalbrandpricecampaign)), .(vecka)]
+brand_campaign_week$totalcampaign <- brand_campaign_week$totalnonpricecampaign+brand_campaign_week$totalpricecampaign
+df_bybrand <- merge(df_bybrand,brand_campaign_week, by=c("vecka"))
+
+# df_bybrand$pricecampaignintensity <- ((df_bybrand$totalbrandpricecampaign/df_bybrand$totalcampaign)*100)
+# df_bybrand$nonpricecampaignintensity <- ((df_bybrand$totalbrandnonpricecampaign/df_bybrand$totalcampaign)*100)
+
+weeklysalesbybrand_PL <- df_bybrand[df_bybrand$brand_PLNB == "PL",]
+weeklysalesbybrand_NB <- df_bybrand[df_bybrand$brand_PLNB == "NB",]
+
+#choose NB price as comp price
+colnames(weeklysalesbybrand_NB)[colnames(weeklysalesbybrand_NB) == "avgfinalprice"] ="avgcompfinalprice"
+relevant_NB <- weeklysalesbybrand_NB[,c("vecka","avgcompfinalprice")]
+
+df_bybrand <- merge(weeklysalesbybrand_PL,relevant_NB, by=c("vecka"))
+
+#create own depth
+df_bybrand$depth <- df_bybrand$avgdiscount/df_bybrand$avgpricebefore
+df_bybrand$nondepth <- (1-df_bybrand$depth)
+
+
+#generate lag variables
+lag_1 <- function(x, k = 1) head(c(rep(NA, k), x), length(x))
+df_bybrand<-df_bybrand [order(df_bybrand$brand_PLNB,df_bybrand$vecka),]
+df_bybrand$totalvolume1 <- ave(df_bybrand$totalvolume, df_bybrand$brand_PLNB, FUN= lag_1)
+df_bybrand$LL1 <- ave(df_bybrand$LL, df_bybrand$brand_PLNB, FUN= lag_1)
+df_bybrand$avgfinalprice1 <- ave(df_bybrand$avgfinalprice, df_bybrand$brand_PLNB, FUN= lag_1)
+df_bybrand$avgpricebefore1 <- ave(df_bybrand$avgpricebefore, df_bybrand$brand_PLNB, FUN= lag_1)
+df_bybrand$avgdiscount1 <- ave(df_bybrand$avgdiscount, df_bybrand$brand_PLNB, FUN= lag_1)
+df_bybrand$nondepth1 <- ave(df_bybrand$nondepth, df_bybrand$brand_PLNB, FUN= lag_1)
+df_bybrand$avgcompfinalprice1 <- ave(df_bybrand$avgcompfinalprice, df_bybrand$brand_PLNB, FUN= lag_1)
+# df_bybrand$pricecampaignintensity1 <- ave(df_bybrand$pricecampaignintensity, df_bybrand$brand_PLNB, FUN= lag_1)
+df_bybrand$logavgdiscount <- log(df_bybrand$avgdiscount+1)
+df_bybrand$logavgdiscount1 <- ave(df_bybrand$logavgdiscount, df_bybrand$brand_PLNB, FUN= lag_1)
+
+#create the first difference of (log) variables
+df_bybrand <- na.omit(df_bybrand) #We drop week 0
+df_bybrand$dtotalvolume <- (df_bybrand$totalvolume)-(df_bybrand$totalvolume1)
+df_bybrand$dlogtotalvolume <- log(df_bybrand$totalvolume)-log(df_bybrand$totalvolume1)
+df_bybrand$davgfinalprice <- (df_bybrand$avgfinalprice)-(df_bybrand$avgfinalprice1)
+df_bybrand$davgpricebefore <- (df_bybrand$avgpricebefore)-(df_bybrand$avgpricebefore1)
+df_bybrand$dlogavgfinalprice <- log(df_bybrand$avgfinalprice)-log(df_bybrand$avgfinalprice1)
+df_bybrand$dlogavgpricebefore <- log(df_bybrand$avgpricebefore)-log(df_bybrand$avgpricebefore1)
+df_bybrand$davgcompfinalprice = (df_bybrand$avgcompfinalprice) - (df_bybrand$avgcompfinalprice1)
+df_bybrand$davgdiscount <- (df_bybrand$avgdiscount)-(df_bybrand$avgdiscount1)
+df_bybrand$dlogavgdiscount <- log(df_bybrand$avgdiscount+1)-log(df_bybrand$avgdiscount1+1)
+df_bybrand$dnondepth <- df_bybrand$nondepth-df_bybrand$nondepth1
+df_bybrand$dlognondepth <- log(df_bybrand$nondepth)-log(df_bybrand$nondepth1)
+df_bybrand$dlogLL = log(df_bybrand$LL) - log(df_bybrand$LL1)
+df_bybrand$dlogavgcompfinalprice = log(df_bybrand$avgcompfinalprice) - log(df_bybrand$avgcompfinalprice1)
+# df_bybrand$dpricecampaignintensity = df_bybrand$pricecampaignintensity - df_bybrand$pricecampaignintensity1
+
+
+df_bybrand$logtotalvolume <- log(df_bybrand$totalvolume)
+df_bybrand$logavgpricebefore <- log(df_bybrand$avgpricebefore)
+df_bybrand$logavgcompfinalprice <- log(df_bybrand$avgcompfinalprice)
+df_bybrand$logavgfinalprice <- log(df_bybrand$avgfinalprice)
+
+#create copula
+make_copula <- function(x) {
+		if (length(unique(x))==1) return(as.numeric(rep(NA, length(x))))
+		return(ifelse(ecdf(x)(x)==1, qnorm(1-.0000001), qnorm(ecdf(x)(x))))}
+#This functions transforms a variable (condition: non-normally distributed) to its copula-correction term which can be entered in model estimation. See Park and Gupta (2012, Marketing Science)
+df_bybrand$cop_logavgpricebefore <- make_copula(log((df_bybrand$avgpricebefore)))
+df_bybrand$cop_logdiscount <- make_copula(df_bybrand$logavgdiscount)
+df_bybrand$cop_avgpricebefore <- make_copula((df_bybrand$avgpricebefore))
+df_bybrand$cop_discount <- make_copula(df_bybrand$avgdiscount)
+df_bybrand$cop_lognondepth<- make_copula(log(df_bybrand$nondepth))
+df_bybrand$cop_logavgfinalprice<- make_copula(log(df_bybrand$avgfinalprice))
+
+#create a holiday variable
+df_holiday$vecka <- as.factor(df_holiday$vecka)
+df_bybrand $vecka <- as.factor(df_bybrand$vecka)
+
+df_bybrand <- merge(df_bybrand,df_holiday[,2:4], by=c("vecka"))
+
+#convert format back
+df_bybrand$format <- format
+df_bybrand$category <- category
+
+
+return(df_bybrand)
+}
+
+```
+
+
+#Prepare data for estimating aggregate
+```{r}
+#baking_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Baking ingredients")
+#baking_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Baking ingredients")
+#baking_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Baking ingredients")
+
+#biscuit_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Biscuits")
+#biscuit_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Biscuits")
+#biscuit_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Biscuits") 
+
+butter_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Butter")
+butter_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Butter")
+#butter_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Butter")
+
+#bottledwater_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Bottled water")
+#bottledwater_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Bottled water")
+#bottledwater_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Bottled water") 
+
+cereals_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Cereals")
+cereals_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Cereals")
+#cereals_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Cereals") 
+
+#chips_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Chips & Salty snacks")
+#chips_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Chips & Salty snacks")
+#chips_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Chips & Salty snacks")
+
+#coffee_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Coffee")
+#coffee_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Coffee")
+#coffee_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Coffee") 
+
+#cookie_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Cookies")
+#cookie_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Cookies")
+# cookie_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Cookies") #there is one week ICA is not sold in convenient store
+
+cream_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Cream")
+cream_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Cream")
+#cream_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Cream")
+
+# frozenpizz_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Frozen Pizza Snacks")
+# frozenpizz_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Frozen Pizza Snacks") #there are several weeks ICA is not sold in convenient store
+# frozenpizz_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Frozen Pizza Snacks") #there are several weeks ICA is not sold in convenient store
+
+#juice_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Fruit Juice")
+# juice_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Fruit Juice")
+# juice_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Fruit Juice") #there is one week ICA is not sold in convenient
+
+# icecream_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Ice cream")
+# icecream_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Ice cream")
+# icecream_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Ice cream") #there are several weeks ICA is not sold in convenient store
+
+#jam_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Jam")
+#jam_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Jam")
+#jam_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Jam")
+
+lactosefree_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="LactoseFree")
+lactosefree_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="LactoseFree")
+#lactosefree_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="LactoseFree")
+
+#pastry_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Pastry")
+#pastry_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Pastry")
+#pastry_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Pastry") #there are several weeks ICA is not sold in convenient store
+
+#readymeal_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Ready-made meals")
+#readymeal_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Ready-made meals")
+#readymeal_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Ready-made meals")
+
+#rice_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Rice")
+#rice_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Rice")
+#rice_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Rice") #there are several weeks ICA is not sold in convenient store
+
+#seasoning_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Seasoning")
+#seasoning_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Seasoning")
+#seasoning_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Seasoning") #there is one week ICA is not sold in convenient
+
+#softdrink_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Soft drinks")
+#softdrink_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Soft drinks")
+#softdrink_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Soft drinks") #there is one week ICA is not sold in convenient
+
+#yoghurt_hyper_PL <- genrelevantvar_perSKU(df,format = "hypermarket",category ="Yogurt")
+#yoghurt_super_PL <- genrelevantvar_perSKU(df,format = "supermarket",category ="Yogurt")
+#yoghurt_conve_PL <- genrelevantvar_perSKU(df,format = "convenience",category ="Yogurt")
+```
+
+```{r}
+
+```
+
+
+#Estimate Nonlinear Model WITH LEVEL
+```{r eval=FALSE, include=FALSE}
+
+butter_hyper_PL_est_discount <- discountnonlinearest_PL_nothreshold(df = butter_hyper_PL)[[1]]
+butter_super_PL_est_discount <- discountnonlinearest_PL_nothreshold(df = butter_super_PL)[[1]]
+
+cereals_hyper_PL_est_discount <- discountnonlinearest_PL_nothreshold(df = cereals_hyper_PL)[[1]]
+cereals_super_PL_est_discount <- discountnonlinearest_PL_nothreshold(df = cereals_super_PL)[[1]]
+
+cream_hyper_PL_est_discount <- discountnonlinearest_PL_nothreshold(df = cream_hyper_PL)[[1]]
+cream_super_PL_est_discount <- discountnonlinearest_PL_nothreshold(df = cream_super_PL)[[1]]
+
+lactosefree_hyper_PL_est_discount <- discountnonlinearest_PL_nothreshold(df = lactosefree_hyper_PL)[[1]]
+lactosefree_super_PL_est_discount <- discountnonlinearest_PL_nothreshold(df = lactosefree_super_PL)[[1]]
+
+
+butter_hyper_PL_est_discount_plot <- discountnonlinearest_PL_nothreshold(df = butter_hyper_PL)[[2]]
+butter_super_PL_est_discount_plot <- discountnonlinearest_PL_nothreshold(df = butter_super_PL)[[2]]
+
+cereals_hyper_PL_est_discount_plot <- discountnonlinearest_PL_nothreshold(df = cereals_hyper_PL)[[2]]
+cereals_super_PL_est_discount_plot <- discountnonlinearest_PL_nothreshold(df = cereals_super_PL)[[2]]
+
+cream_hyper_PL_est_discount_plot <- discountnonlinearest_PL_nothreshold(df = cream_hyper_PL)[[2]]
+cream_super_PL_est_discount_plot <- discountnonlinearest_PL_nothreshold(df = cream_super_PL)[[2]]
+
+
+lactosefree_hyper_PL_est_discount_plot <- discountnonlinearest_PL_nothreshold(df = lactosefree_hyper_PL)[[2]]
+lactosefree_super_PL_est_discount_plot <- discountnonlinearest_PL_nothreshold(df = lactosefree_super_PL)[[2]]
+
+
+
+Combined_result_discount_plot <- rbind(
+                          butter_hyper_PL_est_discount_plot,butter_super_PL_est_discount_plot,
+                          cereals_hyper_PL_est_discount_plot,cereals_super_PL_est_discount_plot,
+                          cream_hyper_PL_est_discount_plot,cream_super_PL_est_discount_plot,
+                          lactosefree_hyper_PL_est_discount_plot,lactosefree_super_PL_est_discount_plot)
+Combined_result_discount_plot$dlogprice_values <- as.numeric(Combined_result_discount_plot$dlogprice_values)
+Combined_result_discount_plot$NLPE_values_pricebefore <- as.numeric(Combined_result_discount_plot$NLPE_values_pricebefore)
+Combined_result_discount_plot$NLPE_values_discount <- as.numeric(Combined_result_discount_plot$NLPE_values_discount)
+Combined_result_discount_plot$category <- as.factor(Combined_result_discount_plot$category)
+Combined_result_discount_plot$format <- as.factor(Combined_result_discount_plot$format)
+
+ggplot(Combined_result_discount_plot, aes(x = dlogprice_values, y = NLPE_values_pricebefore, color = category, linetype = format)) +
+  geom_line() +
+  labs(title = "Price BEFORE Elasticity",
+       x = "dlogpricebefore",
+       y = "NL_Pricebefore")
+
+ggplot(Combined_result_discount_plot, aes(x = dlogprice_values, y = NLPE_values_discount, color = category, linetype = format)) +
+  geom_line() +
+  labs(title = "DISCOUNT Elasticity",
+       x = "dlogdiscount",
+       y = "NL_Discount")
+```
+
+

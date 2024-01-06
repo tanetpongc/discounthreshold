@@ -1,0 +1,100 @@
+---
+title: "Managebrandandcategorydata"
+author: "Ned"
+date: "22/12/2021"
+output: pdf_document
+---
+
+Goal: To see the market structure and potential problems if we treats all competitive brands as national brands
+
+```{r setup and require library, include=FALSE, WARNING = FALSE}
+library(plyr) #for revalue function for brand
+library(dplyr) #for mutate factor level of brand
+library(data.table) #for set DT checking brand and import
+library(car) #function for testing coefficient equivalence
+library(lmtest) #function for testing nonlinearity
+```
+
+
+```{r read data, include=FALSE}
+#df_scanner <- fread("../../../../data/df_scanner_butikid.csv", encoding = 'UTF-8')
+df_scanner <- fread("../../../../data/df_scanner_disaggregate.csv", encoding = 'UTF-8')
+df_holiday <- read.csv("../../../../data/weeklyholiday.csv")
+```
+
+```{r rename all ICA brand and code PL and NB, include=FALSE}
+df_scanner$format <- ifelse(df_scanner$saljkanal == "1","online",df_scanner$format)
+df_scanner$format <- as.factor(df_scanner$format)
+```
+
+```{r rename all ICA brand and code PL and NB, include=FALSE}
+df_scanner$brand<- revalue(df_scanner$brand, c(
+              "IBA"="ICA",
+              "ICA Asia"="ICA",
+              "ICA BASIC" = "ICA Basic",
+              "ICA EKOLOGISKT" = "ICA I love eco",
+              "ICA Cook & Eat" = "ICA",
+              "ICA God smak från" = "ICA",
+              "ICA GOTT LIV" = "ICA Gott Liv",
+              "ICA HOME" = "ICA",
+              "ICA home" = "ICA",
+              "I LOVE ECO" = "ICA I love eco",
+              "ICA I LOVE ECO" = "ICA I love eco",
+              "ICA KVANTUM" = "ICA",
+              "ICA KVANTUMS BAGERI" = "ICA",
+              "ICA Rätt Enkelt" = "ICA",
+              "ICA SELECTION" = "ICA Selection"
+              ))
+private_label <- as.factor(c("ICA","ICA Basic","ICA Gott Liv","ICA I love eco","ICA Selection","ICA Skona"))
+
+df_scanner$brand_cat <- ifelse(df_scanner$brand %in% private_label,df_scanner$brand,"NB")
+df_scanner$brand_cat <- as.factor(df_scanner$brand_cat)
+df_scanner$PL <- ifelse(df_scanner$brand %in% private_label,1,0)
+#df_scanner$PL <- as.factor(df_scanner$PL)
+```
+
+
+
+
+
+
+```{r drop unexplainablevalue}
+#dropdecimal and non-integer
+
+df <- df_scanner[df_scanner$sales_volume>=1,]
+df <- df[!df$sales_volume%%1,]
+
+message(paste("The total n before dropping decimal and non-integer:", dim(df_scanner)[1]))
+message(paste("The total n after dropping decimal and non-integer:", dim(df)[1]))
+
+
+remove(list=c("df_scanner"))
+
+```
+Format sales by category
+```{r}
+df$pricebeforeperunit <- df$spendingbeforedisc/df$sales_volume
+df$finalpriceperunit <- df$finalspending/df$sales_volume
+df$discountperunit <- df$totaldiscount/df$sales_volume
+df$discount <- ifelse(df$discountperunit>0,1,0)
+
+format_market <- setDT(df)[, .(totalvolume=sum(sales_volume),totalvalue=sum(finalspending),avgcatpricebefore=mean(pricebeforeperunit),avgcatfinalprice=mean(finalpriceperunit),avgcatdiscount=mean(discountperunit), discountfrequency=sum(discount),LL=uniqueN(produkt_id),customer=uniqueN(hushall_id)), .(format,category)]
+setorder(format_market,category,format)
+
+format_market_bybrand <- setDT(df)[, .(totalvolume=sum(sales_volume),totalvalue=sum(finalspending),avgcatpricebefore=mean(pricebeforeperunit),avgcatfinalprice=mean(finalpriceperunit),avgcatdiscount=mean(discountperunit), discountfrequency=sum(discount),LL=uniqueN(produkt_id),customer=uniqueN(hushall_id)), .(format,category,brand)]
+setorder(format_market_bybrand,category,format)
+
+format_market_byNBPL <- setDT(df)[, .(totalvolume=sum(sales_volume),totalvalue=sum(finalspending),avgcatpricebefore=mean(pricebeforeperunit),avgcatfinalprice=mean(finalpriceperunit),avgcatdiscount=mean(discountperunit), discountfrequency=sum(discount),LL=uniqueN(produkt_id),customer=uniqueN(hushall_id)), .(format,category,brand_cat)]
+setorder(format_market_byNBPL,category,format)
+```
+
+
+```{r}
+fwrite(format_market,"../../../../gen/analysis/format_market.csv")
+fwrite(format_market_bybrand,"../../../../gen/analysis/format_market_bybrand.csv")
+fwrite(format_market_byNBPL,"../../../../gen/analysis/format_market_byNBPL.csv")
+```
+
+
+
+

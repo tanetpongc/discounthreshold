@@ -1,0 +1,402 @@
+---
+title: "Estimating Non Linear Threshold for Selected Brands by Least Square Method"
+output: html_notebook
+---
+
+We import Ramlosa at Supermarket datasets that has statistical evidence for "historical price gap"
+
+```{r load relevant library}
+library(dplyr) #for mutate factor
+library(data.table) #turning results in table
+```
+
+```{r import dataset}
+df_his <- read.csv("../../../../src/analysis/nonlinear_byformat/price threshold/ramlosa_super_histgap.csv")
+df_his <- df_his %>% mutate(vecka=droplevels(as.factor(vecka))) 
+
+df_full <- read.csv("../../../../src/analysis/nonlinear_byformat/price threshold/loka_super_fullgap.csv")
+df_full <- df_full %>% mutate(vecka=droplevels(as.factor(vecka))) 
+```
+
+\section{Without Competitive Price}
+
+Model Free Evidence Between Price and Sales
+```{r plot price and sales for ramlosa, echo=TRUE}
+plot(df_his$vecka, df_his$avgfinalprice, main = "Ramlosa Price in Supermarket", xlab = "Week", ylab = "Average final price", col="blue")
+
+plot(df_his$totalvolume ~ df_his$avgfinalprice, main = "Ramlosa Price & Sales (Vol) in Supermarket", col="blue")
+abline(lm(df_his$totalvolume ~ df_his$avgfinalprice), col="blue")
+
+hist(df_his$dlogavgfinalprice)
+
+summary(df_his$dlogavgfinalprice)
+```
+
+(1) Simple Model to calculate error (correction) term: $$ (1) ln(S_{i,t-1}) = a_{0i}+a_{1i}ln(P_{it-1}) + e_{it} $$ 
+
+(0) Calculate Linear Model to get initial value for optimization
+$$ \Delta ln(S_{i,t}) = \beta_{0i}+\beta_{1i}\Delta (P_{it})+ \phi_1[ln(S_{i,t-1})-\phi_2 ln(P_{i,t-1}))] $$
+
+Objective: We want to estimate nonlinear model with historical price gap:
+$$\Delta ln(S_{i,t}) = c +\{\alpha_{0}
+ + \frac{\alpha_{HG}}{1+exp(\gamma(HistPGap_{i,t}))-b_{HG})} +\frac{\alpha_{HL}}{1+exp(-\gamma(HistPGap_{i,t}))-b_{HL})}\}\Delta ln(P_{i,t})\\ 
++ \phi_1[ln(S_{i,t-1})+\phi_2 ln(P_{i,t-1}))]$$
+
+
+We will obtain initial value of thresholds ($\beta_G,\beta_L$)  from distribution of $\Delta (P_{it}$ and change of slope by moderate change ($\alpha_G,\alpha_L$) and assume symmetrical case.
+
+
+
+Then, we estimate using least square method (minimizing SSE)
+
+
+```{r Estimate with NLS (Full)}
+
+LS_nonlinear_hisdisc <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df_full$dlogavgpricebefore- parvec[9])))
+  F_D_L <- 1/(1+exp(-gamma*(df_full$dlognondepth- parvec[10])))
+  
+  ut <- df_full$dlogtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df_full$dlogavgpricebefore
+                                  + (parvec[4] + parvec[5]*F_D_L)*df_full$dlognondepth
+                            + parvec[6]*((log(df_full$totalvolume1))+parvec[7]*log(df_full$avgpricebefore1)+parvec[8]*log(df_full$nondepth1)))
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgpricebefore + dlognondepth + log(totalvolume1) + log(avgpricebefore1) +log(nondepth1) ,data=df_full)
+
+summary(lm_full_linear)
+
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[4,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[5,1])/(summary(lm_full_linear)$coefficients[4,1]) 
+phi_3_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[4,1])
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+
+
+  
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <-  alpha_0_disc_lm
+  parvec_5 <- alpha_l_disc_full_lm 
+  parvec_6 <- phi_1_full_lm
+  parvec_7 <- phi_2_full_lm
+  parvec_8 <- phi_3_full_lm
+  parvec_9 <- as.numeric(summary(df_full$dlogavgpricebefore)[3])
+  parvec_10 <- as.numeric(summary(df_full$dlognondepth)[3])
+  
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear_hisdisc, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df_full)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+paste("Calculated SE of model:",MSE_calculated)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas" ,"price_elas_loss","disc_elas","disc_elas_loss","correction_1",
+                   "correction_2","correction_3","price_threshold","discount_threshold")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS 
+```
+
+```{r plot reg price results from LS FULL}
+c_0 <- par_LS.est[1]
+alpha0_H <- par_LS.est[2]
+alpha_H_L <- par_LS.est[3]
+alpha0_D <- par_LS.est[4]
+alpha_D_L <- par_LS.est[5]
+phi_1_his <- par_LS.est[6]
+phi_2_his <- par_LS.est[7]
+phi_3_his <- par_LS.est[8]
+beta_H_L <- par_LS.est[9]
+beta_D_L <- par_LS.est[10]
+
+# Defining x-values
+graph_reso <- 0.01
+x_values <- seq(min(df_full$dlogavgpricebefore), max(df_full$dlogavgpricebefore), by = graph_reso)
+xgap_values <- seq(min(df_full$dlogavgpricebefore), max(df_full$dlogavgpricebefore), by = graph_reso)
+
+
+# Defining various functions to plot
+NLPE_H <- function(dlogavgpricebefore)
+      {(alpha0_H + alpha_H_L*( 1 + exp(-gamma*(dlogavgpricebefore-beta_H_L) ) )^-1 )*dlogavgpricebefore}
+TransF_H <- function(dlogavgpricebefore){alpha0_H + alpha_H_L*( 1 + exp(-gamma*(dlogavgpricebefore-beta_H_L) ) )^-1}
+
+F_H_L <- function(x){( 1 + exp(-500*(dlogavgpricebefore) ) )^-1}
+
+NLPE_values_H <- NLPE_H(dlogavgpricebefore=xgap_values)
+TransF_values_H <- TransF_H(dlogavgpricebefore=xgap_values)
+time <- seq(1:151)
+
+#Plot
+plot(x_values, NLPE_values_H, type = "l", main = "Nonlinear REGULAR price elasticities Loka", xlab = "dlogavgpricebefore", ylab = "NLPE")
+plot(xgap_values, TransF_values_H, type = "l", main = "Smooth Transition Functions", xlab = "hisregpricegap", ylab = "STF")
+
+
+#PLOT DLOGNONDEPTH
+
+# Defining x-values
+graph_reso <- 0.001
+x_values_D <- seq(min(df_full$dlognondepth), max(df_full$dlognondepth), by = graph_reso)
+xgap_values_D <- seq(min(df_full$dlognondepth), max(df_full$dlognondepth), by = graph_reso)
+
+
+# Defining various functions to plot
+NLPE_D <- function(dlognondepth)
+      {( alpha0_D + alpha_D_L*( 1 + exp(-gamma*(dlognondepth-beta_D_L) ) )^-1 )*dlognondepth}
+TransF_D <- function(dlognondepth){alpha0_D + alpha_D_L*( 1 + exp(-gamma*(dlognondepth-beta_D_L) ) )^-1}
+
+F_D_L <- function(x){( 1 + exp(-500*(dlognondepth) ) )^-1}
+
+NLPE_values_D <- NLPE_D(dlognondepth=xgap_values_D)
+TransF_values_D <- TransF_D(dlognondepth=xgap_values_D)
+
+
+
+#Plot
+a <- plot(x_values_D, NLPE_values_D, type = "l", main = "Nonlinear NON DEPTH elasticities Loka", xlab = "dlognondepth", ylab = "NLPE")
+b <- plot(xgap_values_D, TransF_values_D, type = "l", main = "Smooth Transition Functions NONDEPTH", xlab = "dlognondepth", ylab = "STF")
+
+
+#combine plot
+#plot(x_values, NLPE_values_H, type = "l", main = "Nonlinear REGULAR price elasticities Ramlosa", xlab = "dlogavgpricebefore", ylab = "NLPE")
+#par(new=TRUE)
+#plot(x_values_H, NLPE_values_D, type = "l", main = "Nonlinear NON DEPTH elasticities Ramlosa", xlab = "dlognondepth", ylab = "NLPE")
+```
+
+
+```{r plot linear vs nonlinear FULL}
+linear_predict <- function(dlogavgpricebefore,dlognondepth,totalvolume1,avgpricebefore1,nondepth1){
+  c_full_lm + alpha_0_full_lm*dlogavgpricebefore + alpha_0_disc_lm*dlognondepth + phi_1_full_lm*log(totalvolume1) + (phi_1_full_lm*phi_2_full_lm)*log(avgpricebefore1) + (phi_1_full_lm*phi_3_full_lm)*log(nondepth1)
+  }
+
+nonlinear_predict <- function(dlogavgpricebefore,dlognondepth,totalvolume1,avgpricebefore1,nondepth1)
+{c_0 +(alpha0_H + alpha_H_L*( 1 + exp(-gamma*(dlogavgpricebefore-beta_H_L) ) )^-1 )*dlogavgpricebefore + ( alpha0_D + alpha_D_L*( 1 + exp(-gamma*(dlognondepth-beta_D_L) ) )^-1 )*dlognondepth + phi_1_his*(log(df_full$totalvolume1))+(phi_1_his*phi_2_his*log(df_full$avgpricebefore1)) + (phi_1_his*phi_3_his*log(df_full$nondepth1))}
+
+
+pre_linear <- cbind(linear_predict(dlogavgpricebefore=df_full$dlogavgpricebefore,dlognondepth=df_full$dlognondepth,totalvolume1 = df_full$totalvolume1,avgpricebefore1 = df_full$avgfinalprice1,nondepth1 = df_full$nondepth1),df_full$dlogavgfinalprice,c("linear"))
+
+pre_nonlinear<- cbind(nonlinear_predict(dlogavgpricebefore=df_full$dlogavgpricebefore,dlognondepth=df_full$dlognondepth,totalvolume1 = df_full$totalvolume1,avgpricebefore1 = df_full$avgfinalprice1,nondepth1 = df_full$nondepth1),df_full$dlogavgfinalprice,c("nonlinear"))
+
+actual <- cbind(df_full$dlogtotalvolume,df_full$dlogavgfinalprice,c("actual"))
+
+compare_actual_predict <- rbind(actual,pre_linear,pre_nonlinear)
+
+
+plot(compare_actual_predict[,2], compare_actual_predict[,1], pch = 19,col = factor(compare_actual_predict[,3]),
+     xlab="dlogPrice", ylab="dlogTotalVolume")
+legend("topright",
+       legend = levels(factor(compare_actual_predict[,3])),
+       pch = 19,
+       col = factor(levels(factor(compare_actual_predict[,3]))))
+
+k <- list(par_LS,c)
+```
+
+
+
+```{r Estimate with NLS (HIS)}
+
+LS_nonlinear_hisdisc <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df_his$dlogavgpricebefore- parvec[9])))
+  F_D_L <- 1/(1+exp(-gamma*(df_his$dlognondepth- parvec[10])))
+  
+  ut <- df_his$dlogtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df_his$dlogavgpricebefore
+                                  + (parvec[4] + parvec[5]*F_D_L)*df_his$dlognondepth
+                            + parvec[6]*((log(df_his$totalvolume1))+parvec[7]*log(df_his$avgpricebefore1)+parvec[8]*log(df_his$nondepth1)))
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgpricebefore + dlognondepth + log(totalvolume1) + log(avgpricebefore1) +log(nondepth1) ,data=df_his)
+
+summary(lm_full_linear)
+
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[4,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[5,1])/(summary(lm_full_linear)$coefficients[4,1]) 
+phi_3_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[4,1])
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+
+
+  
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <-  alpha_0_disc_lm
+  parvec_5 <- alpha_l_disc_full_lm 
+  parvec_6 <- phi_1_full_lm
+  parvec_7 <- phi_2_full_lm
+  parvec_8 <- phi_3_full_lm
+  parvec_9 <- as.numeric(summary(df_his$dlogavgpricebefore)[3])
+  parvec_10 <- as.numeric(summary(df_his$dlognondepth)[3])
+  
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear_hisdisc, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df_his)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+paste("Calculated SE of model:",MSE_calculated)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas" ,"price_elas_loss","disc_elas","disc_elas_loss","correction_1",
+                   "correction_2","correction_3","price_threshold","discount_threshold")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS 
+```
+
+```{r plot reg price results from LS HIS}
+c_0 <- par_LS.est[1]
+alpha0_H <- par_LS.est[2]
+alpha_H_L <- par_LS.est[3]
+alpha0_D <- par_LS.est[4]
+alpha_D_L <- par_LS.est[5]
+phi_1_his <- par_LS.est[6]
+phi_2_his <- par_LS.est[7]
+phi_3_his <- par_LS.est[8]
+beta_H_L <- par_LS.est[9]
+beta_D_L <- par_LS.est[10]
+
+# Defining x-values
+graph_reso <- 0.01
+x_values <- seq(min(df_his$dlogavgpricebefore), max(df_his$dlogavgpricebefore), by = graph_reso)
+xgap_values <- seq(min(df_his$dlogavgpricebefore), max(df_his$dlogavgpricebefore), by = graph_reso)
+
+
+# Defining various functions to plot
+NLPE_H <- function(dlogavgpricebefore)
+      {( alpha0_H + alpha_H_L*( 1 + exp(-gamma*(dlogavgpricebefore-beta_H_L) ) )^-1 )*dlogavgpricebefore}
+TransF_H <- function(dlogavgpricebefore){alpha0_H + alpha_H_L*( 1 + exp(-gamma*(dlogavgpricebefore-beta_H_L) ) )^-1}
+
+F_H_L <- function(x){( 1 + exp(-500*(dlogavgpricebefore) ) )^-1}
+
+NLPE_values_H <- NLPE_H(dlogavgpricebefore=xgap_values)
+TransF_values_H <- TransF_H(dlogavgpricebefore=xgap_values)
+time <- seq(1:151)
+
+#Plot
+plot(x_values, NLPE_values_H, type = "l", main = "Nonlinear REGULAR price elasticities LOKA", xlab = "dlogavgpricebefore", ylab = "NLPE")
+plot(xgap_values, TransF_values_H, type = "l", main = "Smooth Transition Functions", xlab = "hisregpricegap", ylab = "STF")
+
+
+#PLOT DLOGNONDEPTH
+
+# Defining x-values
+graph_reso <- 0.001
+x_values_D <- seq(min(df_his$dlognondepth), max(df_his$dlognondepth), by = graph_reso)
+xgap_values_D <- seq(min(df_his$dlognondepth), max(df_his$dlognondepth), by = graph_reso)
+
+
+# Defining various functions to plot
+NLPE_D <- function(dlognondepth)
+      {( alpha0_D + alpha_D_L*( 1 + exp(-gamma*(dlognondepth-beta_D_L) ) )^-1 )*dlognondepth}
+TransF_D <- function(dlognondepth){alpha0_D + alpha_D_L*( 1 + exp(-gamma*(dlognondepth-beta_D_L) ) )^-1}
+
+F_D_L <- function(x){( 1 + exp(-500*(dlognondepth) ) )^-1}
+
+NLPE_values_D <- NLPE_D(dlognondepth=xgap_values_D)
+TransF_values_D <- TransF_D(dlognondepth=xgap_values_D)
+
+
+
+#Plot
+plot(x_values_D, NLPE_values_D, type = "l", main = "Nonlinear NON DEPTH elasticities LOKA", xlab = "dlognondepth", ylab = "NLPE")
+plot(xgap_values_D, TransF_values_D, type = "l", main = "Smooth Transition Functions NONDEPTH", xlab = "dlognondepth", ylab = "STF")
+```
+
+```{r plot linear vs nonlinear HIS}
+linear_predict <- function(dlogavgpricebefore,dlognondepth,totalvolume1,avgpricebefore1,nondepth1){
+  c_full_lm + alpha_0_full_lm*dlogavgpricebefore + alpha_0_disc_lm*dlognondepth + phi_1_full_lm*log(totalvolume1) + (phi_1_full_lm*phi_2_full_lm)*log(avgpricebefore1) + (phi_1_full_lm*phi_3_full_lm)*log(nondepth1)
+  }
+
+nonlinear_predict <- function(dlogavgpricebefore,dlognondepth,totalvolume1,avgpricebefore1,nondepth1)
+{c_0 +(alpha0_H + alpha_H_L*( 1 + exp(-gamma*(dlogavgpricebefore-beta_H_L) ) )^-1 )*dlogavgpricebefore + ( alpha0_D + alpha_D_L*( 1 + exp(-gamma*(dlognondepth-beta_D_L) ) )^-1 )*dlognondepth + phi_1_his*(log(df_his$totalvolume1))+(phi_1_his*phi_2_his*log(df_his$avgpricebefore1)) + (phi_1_his*phi_3_his*log(df_his$nondepth1))}
+
+
+pre_linear <- cbind(linear_predict(dlogavgpricebefore=df_his$dlogavgpricebefore,dlognondepth=df_his$dlognondepth,totalvolume1 = df_his$totalvolume1,avgpricebefore1 = df_his$avgfinalprice1,nondepth1 = df_his$nondepth1),df_his$dlogavgfinalprice,c("linear"))
+
+pre_nonlinear<- cbind(nonlinear_predict(dlogavgpricebefore=df_his$dlogavgpricebefore,dlognondepth=df_his$dlognondepth,totalvolume1 = df_his$totalvolume1,avgpricebefore1 = df_his$avgfinalprice1,nondepth1 = df_his$nondepth1),df_his$dlogavgfinalprice,c("nonlinear"))
+
+actual <- cbind(df_his$dlogtotalvolume,df_his$dlogavgfinalprice,c("actual"))
+
+compare_actual_predict <- rbind(actual,pre_linear,pre_nonlinear)
+
+
+plot(compare_actual_predict[,2], compare_actual_predict[,1], pch = 19,col = factor(compare_actual_predict[,3]),
+     xlab="dlogPrice", ylab="dlogTotalVolume")
+legend("topright",
+       legend = levels(factor(compare_actual_predict[,3])),
+       pch = 19,
+       col = factor(levels(factor(compare_actual_predict[,3]))))
+```

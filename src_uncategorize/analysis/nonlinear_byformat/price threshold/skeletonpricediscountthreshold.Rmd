@@ -1,0 +1,1479 @@
+---
+title: "Skeleton for estimating price and discount elasticity with threshold across formats"
+output: html_notebook
+---
+
+```{r Estimating function}
+discountnonlinearest_PL <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgpricebefore-parvec[4])))
+  F_D_L <- 1/(1+exp(-gamma*(df$dlognondepth- parvec[7])))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df$dlogavgpricebefore
+                                  + (parvec[5] + parvec[6]*F_D_L)*df$dlognondepth
+                            + parvec[8]*df$dlogavgcompfinalprice
+                            + parvec[9]*((log(df$totalvolume1))+parvec[10]*log(df$avgpricebefore1)+parvec[11]*log(df$nondepth1))
+                            + parvec[12]*df$cop_logavgpricebefore + parvec[13]*df$cop_lognondepth + parvec[14]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgpricebefore + dlognondepth + dlogavgcompfinalprice + log(totalvolume1) + log(avgpricebefore1) +log(nondepth1) + cop_logavgpricebefore + cop_lognondepth + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+phi_3_full_lm <- (summary(lm_full_linear)$coefficients[7,1])/(summary(lm_full_linear)$coefficients[5,1])
+copula_price <- summary(lm_full_linear)$coefficients[8,1]
+copula_nondepth <- summary(lm_full_linear)$coefficients[9,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[10,1]
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$dlogavgpricebefore)[3])
+beta_l_disc_full_lm <- as.numeric(summary(df$dlognondepth)[3])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- beta_l_his_full_lm  
+  parvec_5 <-  alpha_0_disc_lm
+  parvec_6 <- alpha_l_disc_full_lm 
+  parvec_7 <- beta_l_disc_full_lm  
+  parvec_8 <- alpha_compprice
+  parvec_9 <- phi_1_full_lm
+  parvec_10 <- phi_2_full_lm
+  parvec_11 <- phi_3_full_lm
+  parvec_12 <- copula_price
+  parvec_13 <- copula_nondepth
+  parvec_14 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11,parvec_12,parvec_13,parvec_14)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","priceloss_threshold","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","correction_vol","correction_price","correction_nondepth","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r plotting function}
+discountnonlinearest_PL <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgpricebefore-parvec[4])))
+  F_D_L <- 1/(1+exp(-gamma*(df$dlognondepth- parvec[7])))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df$dlogavgpricebefore
+                                  + (parvec[5] + parvec[6]*F_D_L)*df$dlognondepth
+                            + parvec[8]*df$dlogavgcompfinalprice
+                            + parvec[9]*((log(df$totalvolume1))+parvec[10]*log(df$avgpricebefore1)+parvec[11]*log(df$nondepth1))
+                            + parvec[12]*df$cop_logavgpricebefore + parvec[13]*df$cop_lognondepth + parvec[14]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgpricebefore + dlognondepth + dlogavgcompfinalprice + log(totalvolume1) + log(avgpricebefore1) +log(nondepth1) + cop_logavgpricebefore + cop_lognondepth + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+phi_3_full_lm <- (summary(lm_full_linear)$coefficients[7,1])/(summary(lm_full_linear)$coefficients[5,1])
+copula_price <- summary(lm_full_linear)$coefficients[8,1]
+copula_nondepth <- summary(lm_full_linear)$coefficients[9,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[10,1]
+alpha_l_his_full_lm <- -0.01
+alpha_l_disc_full_lm <- -0.001
+beta_l_his_full_lm <- as.numeric(summary(df$dlogavgpricebefore)[3])
+beta_l_disc_full_lm <- as.numeric(summary(df$dlogavgpricebefore)[3])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- beta_l_his_full_lm  
+  parvec_5 <-  alpha_0_disc_lm
+  parvec_6 <- alpha_l_disc_full_lm 
+  parvec_7 <- beta_l_disc_full_lm  
+  parvec_8 <- alpha_compprice
+  parvec_9 <- phi_1_full_lm
+  parvec_10 <- phi_2_full_lm
+  parvec_11 <- phi_3_full_lm
+  parvec_12 <- copula_price
+  parvec_13 <- copula_nondepth
+  parvec_14 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11,parvec_12,parvec_13,parvec_14)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","priceloss_threshold","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","correction_vol","correction_price","correction_nondepth","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r TRY TO REDUCE THE Parameters}
+discountnonlinearest_PL_level <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$logavgpricebefore-parvec[4])))
+  F_D_L <- 1/(1+exp(-gamma*(df$logdiscount - parvec[7])))
+  
+  ut <- df$logtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df$logavgpricebefore
+                                  + (parvec[5] + parvec[6]*F_D_L)*df$logdiscount
+                            + parvec[8]*df$logavgcompfinalprice
+                            + parvec[9]*df$cop_logavgpricebefore + parvec[10]*df$cop_logdiscount + parvec[11]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(logtotalvolume ~ logavgpricebefore + logdiscount + logavgcompfinalprice + cop_logavgpricebefore + cop_logdiscount + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+copula_price <- summary(lm_full_linear)$coefficients[5,1]
+copula_discount <- summary(lm_full_linear)$coefficients[6,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[7,1]
+alpha_l_his_full_lm <- -0.0001
+alpha_l_disc_full_lm <- -0.0001
+beta_l_his_full_lm <- as.numeric(summary(df$logavgpricebefore)[3])
+beta_l_disc_full_lm <- as.numeric(summary(df$logdiscount)[3])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- beta_l_his_full_lm  
+  parvec_5 <-  alpha_0_disc_lm
+  parvec_6 <- alpha_l_disc_full_lm 
+  parvec_7 <- beta_l_disc_full_lm  
+  parvec_8 <- alpha_compprice
+  parvec_9 <- copula_price
+  parvec_10 <- copula_discount
+  parvec_11 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","priceloss_threshold","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+
+```{r Estimating function}
+discountnonlinearest_PL_nocop <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgpricebefore-parvec[4])))
+  F_D_L <- 1/(1+exp(-gamma*(df$dlognondepth- parvec[7])))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df$dlogavgpricebefore
+                                  + (parvec[5] + parvec[6]*F_D_L)*df$dlognondepth
+                            + parvec[8]*df$dlogavgcompfinalprice
+                            + parvec[9]*((log(df$totalvolume1))+parvec[10]*log(df$avgpricebefore1)+parvec[11]*log(df$nondepth1))
+                            + parvec[12]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgpricebefore + dlognondepth + dlogavgcompfinalprice + log(totalvolume1) + log(avgpricebefore1) +log(nondepth1) + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+phi_3_full_lm <- (summary(lm_full_linear)$coefficients[7,1])/(summary(lm_full_linear)$coefficients[5,1])
+alpha_holiday <- summary(lm_full_linear)$coefficients[8,1]
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$dlogavgpricebefore)[3])
+beta_l_disc_full_lm <- as.numeric(summary(df$dlognondepth)[3])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- beta_l_his_full_lm  
+  parvec_5 <-  alpha_0_disc_lm
+  parvec_6 <- alpha_l_disc_full_lm 
+  parvec_7 <- beta_l_disc_full_lm  
+  parvec_8 <- alpha_compprice
+  parvec_9 <- phi_1_full_lm
+  parvec_10 <- phi_2_full_lm
+  parvec_11 <- phi_3_full_lm
+  parvec_12 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11,parvec_12)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","priceloss_threshold","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","correction_vol","correction_price","correction_nondepth","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r TRY TO REDUCE THE Parameters}
+discountnonlinearest_PL_loglevel <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(gamma*(df$logavgpricebefore-parvec[4])))
+  F_D_L <- 1/(1+exp(gamma*(df$logdiscount - parvec[7])))
+  
+  ut <- df$logtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df$logavgpricebefore
+                                  + (parvec[5] + parvec[6]*F_D_L)*df$logdiscount
+                            + parvec[8]*df$logavgcompfinalprice
+                            + parvec[9]*df$cop_logavgpricebefore + parvec[10]*df$cop_logdiscount + parvec[11]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(logtotalvolume ~ logavgpricebefore + logdiscount + logavgcompfinalprice + cop_logavgpricebefore + cop_logdiscount + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+copula_price <- summary(lm_full_linear)$coefficients[5,1]
+copula_discount <- summary(lm_full_linear)$coefficients[6,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[7,1]
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$logavgpricebefore)[3])
+beta_l_disc_full_lm <- as.numeric(summary(df$logdiscount)[3])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- beta_l_his_full_lm  
+  parvec_5 <-  alpha_0_disc_lm
+  parvec_6 <- alpha_l_disc_full_lm 
+  parvec_7 <- beta_l_disc_full_lm  
+  parvec_8 <- alpha_compprice
+  parvec_9 <- copula_price
+  parvec_10 <- copula_discount
+  parvec_11 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","priceloss_threshold","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r TRY TO REDUCE THE Parameters}
+discountnonlinearest_PL_loglevel_onlyfinalprice <- function(df){
+df <- df[df$brand == "PL",]  
+LS_nonlinear <- function(parvec){
+  
+  F_H_G <- 1/(1+exp(gamma*(df$logavgfinalprice - parvec[4])))
+  F_H_L <- 1/(1+exp(-gamma*(df$logavgfinalprice - parvec[6])))
+  
+  ut <- df$logtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_G+ parvec[5]*F_H_L)*df$logavgfinalprice
+                            + parvec[7]*df$logavgcompfinalprice
+                            + parvec[8]*df$cop_logavgfinalprice + parvec[9]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(logtotalvolume ~ logavgfinalprice + logavgcompfinalprice + cop_logavgpricebefore + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[3,1]
+copula_price <- summary(lm_full_linear)$coefficients[4,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[5,1]
+alpha_l_his_full_lm <- 0
+alpha_g_his_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$logavgpricebefore)[3])
+beta_g_disc_full_lm <- as.numeric(summary(df$logavgpricebefore)[1])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_g_his_full_lm
+  parvec_4 <- beta_g_disc_full_lm  
+  parvec_5 <-  alpha_g_his_full_lm
+  parvec_6 <- beta_l_his_full_lm
+  parvec_7 <- alpha_compprice
+  parvec_8 <- copula_price
+  parvec_9 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_gain","pricegain_threshold","price_elas_loss","priceloss_threshold","compprice","copulaprice","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r TRY TO REDUCE THE Parameters}
+discountnonlinearest_PL_level <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$davgpricebefore-parvec[4])))
+  F_D_L <- 1/(1+exp(-gamma*(df$davgdiscount - parvec[7])))
+  
+  ut <- df$dtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df$davgpricebefore
+                                  + (parvec[5] + parvec[6]*F_D_L)*df$davgdiscount
+                            + parvec[8]*df$davgcompfinalprice
+                            + parvec[9]*df$cop_avgpricebefore + parvec[10]*df$cop_discount + parvec[11]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dtotalvolume ~ davgpricebefore + davgdiscount + davgcompfinalprice + cop_avgpricebefore + cop_discount + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+copula_price <- summary(lm_full_linear)$coefficients[5,1]
+copula_discount <- summary(lm_full_linear)$coefficients[6,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[7,1]
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$davgpricebefore)[3])
+beta_l_disc_full_lm <- as.numeric(summary(df$davgdiscount)[3])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- beta_l_his_full_lm  
+  parvec_5 <-  alpha_0_disc_lm
+  parvec_6 <- alpha_l_disc_full_lm 
+  parvec_7 <- beta_l_disc_full_lm  
+  parvec_8 <- alpha_compprice
+  parvec_9 <- copula_price
+  parvec_10 <- copula_discount
+  parvec_11 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","priceloss_threshold","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r TRY TO REDUCE THE Parameters}
+discountnonlinearest_PL_level_noprice <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_D_L <- 1/(1+exp(-gamma*(df$logdiscount - parvec[5])))
+  
+  ut <- df$logtotalvolume - (parvec[1] + (parvec[2])*df$logavgpricebefore
+                                  + (parvec[3] + parvec[4]*F_D_L)*df$logdiscount
+                            + parvec[6]*df$logavgcompfinalprice
+                            + parvec[7]*df$cop_logavgpricebefore + parvec[8]*df$cop_logdiscount + parvec[9]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(logtotalvolume ~ logavgpricebefore + logdiscount + logavgcompfinalprice + cop_logavgpricebefore + cop_logdiscount + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+copula_price <- summary(lm_full_linear)$coefficients[5,1]
+copula_discount <- summary(lm_full_linear)$coefficients[6,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[7,1]
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$logavgpricebefore)[3])
+beta_l_disc_full_lm <- as.numeric(summary(df$logdiscount)[3])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <-  alpha_0_disc_lm
+  parvec_4 <- alpha_l_disc_full_lm 
+  parvec_5 <- beta_l_disc_full_lm  
+  parvec_6 <- alpha_compprice
+  parvec_7 <- copula_price
+  parvec_8 <- copula_discount
+  parvec_9 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+
+```{r TRY TO REDUCE THE Parameters}
+discountnonlinearest_PL_level_noprice <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_D_L <- 1/(1+exp(-gamma*(df$logdiscount - parvec[5])))
+  
+  ut <- df$logtotalvolume - (parvec[1] + (parvec[2])*df$logavgpricebefore
+                                  + (parvec[3] + parvec[4]*F_D_L)*df$logdiscount
+                            + parvec[6]*df$logavgcompfinalprice
+                            + parvec[7]*df$cop_logavgpricebefore + parvec[8]*df$cop_logdiscount + parvec[9]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(logtotalvolume ~ logavgpricebefore + logdiscount + logavgcompfinalprice + cop_logavgpricebefore + cop_logdiscount + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+copula_price <- summary(lm_full_linear)$coefficients[5,1]
+copula_discount <- summary(lm_full_linear)$coefficients[6,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[7,1]
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$logavgpricebefore)[3])
+beta_l_disc_full_lm <- as.numeric(summary(df$logdiscount)[3])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <-  alpha_0_disc_lm
+  parvec_4 <- alpha_l_disc_full_lm 
+  parvec_5 <- beta_l_disc_full_lm  
+  parvec_6 <- alpha_compprice
+  parvec_7 <- copula_price
+  parvec_8 <- copula_discount
+  parvec_9 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r Estimating function}
+discountnonlinearest_PL_onlyfinalprice <- function(df){
+  
+df <- df[df$brand == "PL",]
+
+LS_nonlinear <- function(parvec){
+  
+  F_H_G <- 1/(1+exp(gamma*(df$dlogavgfinalprice - parvec[4])))
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgfinalprice - parvec[6])))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2]+parvec[3]*F_H_G +parvec[5]*F_H_L)*df$dlogavgfinalprice
+                            + parvec[7]**df$dlogavgcompfinalprice
+                            + parvec[8]*df$dpricecampaignintensity
+                            + parvec[9]*((log(df$totalvolume1))+parvec[10]*log(df$avgfinalprice1))
+                            + parvec[11]*df$cop_logavgfinalprice + parvec[12]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgfinalprice + dlogavgcompfinalprice + dpricecampaignintensity + log(totalvolume1) + log(avgfinalprice1) + cop_logavgfinalprice + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[3,1]
+alpha_campaign <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+copula_price <- summary(lm_full_linear)$coefficients[7,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[8,1]
+alpha_l_his_full_lm <- 0
+alpha_g_his_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$dlogavgfinalprice)[3])
+beta_g_his_full_lm <- as.numeric(summary(df$dlogavgfinalprice)[1])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_g_his_full_lm
+  parvec_4 <- beta_g_his_full_lm  
+  parvec_5 <- alpha_g_his_full_lm
+  parvec_6 <- beta_l_his_full_lm
+  parvec_7 <- alpha_compprice
+  parvec_8 <- alpha_campaign
+  parvec_9 <- phi_1_full_lm
+  parvec_10 <- phi_2_full_lm
+  parvec_11 <- copula_price
+  parvec_12 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11,parvec_12)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_gain","pricegain_threshold","price_elas_loss","priceloss_threshold",
+                 "compprice","campagin","correction_vol","correction_price","copulaprice","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r Estimating function}
+discountnonlinearest_PL_onlyfinalprice <- function(df){
+  
+df <- df[df$brand == "PL",]
+
+LS_nonlinear <- function(parvec){
+  
+  F_H_G <- 1/(1+exp(gamma*(df$dlogavgfinalprice - parvec[4])))
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgfinalprice - parvec[6])))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2]+parvec[3]*F_H_G +parvec[5]*F_H_L)*df$dlogavgfinalprice
+                            + parvec[7]**df$dlogavgcompfinalprice
+                            + parvec[8]*df$dpricecampaignintensity
+                            + parvec[9]*((log(df$totalvolume1))+parvec[10]*log(df$avgfinalprice1))
+                            + parvec[11]*df$cop_logavgfinalprice + parvec[12]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 800 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgfinalprice + dlogavgcompfinalprice + dpricecampaignintensity + log(totalvolume1) + log(avgfinalprice1) + cop_logavgfinalprice + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[3,1]
+alpha_campaign <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+copula_price <- summary(lm_full_linear)$coefficients[7,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[8,1]
+alpha_l_his_full_lm <- -0.1
+alpha_g_his_full_lm <- 0.01
+beta_l_his_full_lm <- as.numeric(summary(df$dlogavgfinalprice)[3])
+beta_g_his_full_lm <- as.numeric(summary(df$dlogavgfinalprice)[1])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_g_his_full_lm
+  parvec_4 <- beta_g_his_full_lm  
+  parvec_5 <- alpha_g_his_full_lm
+  parvec_6 <- beta_l_his_full_lm
+  parvec_7 <- alpha_compprice
+  parvec_8 <- alpha_campaign
+  parvec_9 <- phi_1_full_lm
+  parvec_10 <- phi_2_full_lm
+  parvec_11 <- copula_price
+  parvec_12 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11,parvec_12)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_gain","pricegain_threshold","price_elas_loss","priceloss_threshold",
+                 "compprice","campagin","correction_vol","correction_price","copulaprice","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r Estimating function}
+discountnonlinearest_PL_onlyfinalprice_level <- function(df){
+  
+LS_nonlinear <- function(parvec){
+  
+  F_H_G <- 1/(1+exp(gamma*(df$logavgfinalprice - parvec[4])))
+  F_H_L <- 1/(1+exp(-gamma*(df$logavgfinalprice - parvec[6])))
+  
+  ut <- df$logtotalvolume - (parvec[1] + (parvec[2]+parvec[3]*F_H_G +parvec[5]*F_H_L)*df$logavgfinalprice
+                            + parvec[7]**df$logavgcompfinalprice
+                            + parvec[8]*df$pricecampaignintensity
+                            + parvec[9]*df$cop_logavgfinalprice + parvec[10]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(logtotalvolume ~ logavgfinalprice + logavgcompfinalprice + pricecampaignintensity  + cop_logavgfinalprice + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[3,1]
+alpha_campaign <- summary(lm_full_linear)$coefficients[4,1]
+copula_price <- summary(lm_full_linear)$coefficients[5,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[6,1]
+alpha_l_his_full_lm <- 0
+alpha_g_his_full_lm <- 0
+beta_l_his_full_lm <- as.numeric(summary(df$dlogavgfinalprice)[3])
+beta_g_his_full_lm <- as.numeric(summary(df$dlogavgfinalprice)[1])
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_g_his_full_lm
+  parvec_4 <- beta_g_his_full_lm  
+  parvec_5 <- alpha_g_his_full_lm
+  parvec_6 <- beta_l_his_full_lm
+  parvec_7 <- alpha_compprice
+  parvec_8 <- alpha_campaign
+  parvec_9 <- copula_price
+  parvec_10 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_gain","pricegain_threshold","price_elas_loss","priceloss_threshold",
+                 "compprice","campagin","copulaprice","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+
+```{r plotting function}
+discountnonlinearest_PL_leveldiscount <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgpricebefore-parvec[4])))
+  F_D_L <- 1/(1+exp(-gamma*(df$dlogavgdiscount - parvec[7])))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df$dlogavgpricebefore
+                                  + (parvec[5] + parvec[6]*F_D_L)*df$dlogavgdiscount
+                            + parvec[8]*df$dlogavgcompfinalprice
+                            + parvec[9]*((log(df$totalvolume1))+parvec[10]*log(df$avgpricebefore1)+parvec[11]*df$logavgdiscount1
+                            + parvec[12]*df$cop_logavgpricebefore + parvec[13]*df$cop_logdiscount + parvec[14]*df$holiday))
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgpricebefore + dlogavgdiscount + dlogavgcompfinalprice + log(totalvolume1) + log(avgpricebefore1) +logavgdiscount1 + cop_logavgpricebefore + cop_logdiscount + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+phi_3_full_lm <- (summary(lm_full_linear)$coefficients[7,1])/(summary(lm_full_linear)$coefficients[5,1])
+copula_price <- summary(lm_full_linear)$coefficients[8,1]
+cop_logdiscount <- summary(lm_full_linear)$coefficients[9,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[10,1]
+alpha_l_his_full_lm <- -0.5
+alpha_l_disc_full_lm <- -1
+beta_l_his_full_lm <- 0.5
+beta_l_disc_full_lm <- -0.5
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- beta_l_his_full_lm  
+  parvec_5 <-  alpha_0_disc_lm
+  parvec_6 <- alpha_l_disc_full_lm 
+  parvec_7 <- beta_l_disc_full_lm  
+  parvec_8 <- alpha_compprice
+  parvec_9 <- phi_1_full_lm
+  parvec_10 <- phi_2_full_lm
+  parvec_11 <- phi_3_full_lm
+  parvec_12 <- copula_price
+  parvec_13 <- cop_logdiscount
+  parvec_14 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11,parvec_12,parvec_13,parvec_14)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","priceloss_threshold","disc_elas","disc_elas_loss","discount_threshold",
+                 "compprice","correction_vol","correction_price","correction_nondepth","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r Estimating function}
+discountnonlinearest_PL_onlyfinalprice_loss <- function(df){
+  
+df <- df[df$brand == "PL",]
+
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgfinalprice - parvec[4])))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2] +parvec[3]*F_H_L)*df$dlogavgfinalprice
+                            + parvec[5]**df$dlogavgcompfinalprice
+                            + parvec[6]*df$dpricecampaignintensity
+                            + parvec[7]*((log(df$totalvolume1))+parvec[8]*log(df$avgfinalprice1))
+                            + parvec[9]*df$cop_logavgfinalprice + parvec[10]*df$holiday)
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgfinalprice + dlogavgcompfinalprice + dpricecampaignintensity + log(totalvolume1) + log(avgfinalprice1) + cop_logavgfinalprice + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[3,1]
+alpha_campaign <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+copula_price <- summary(lm_full_linear)$coefficients[7,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[8,1]
+alpha_l_his_full_lm <- -0.8
+beta_l_his_full_lm <- 0.5
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- beta_l_his_full_lm
+  parvec_5 <- alpha_compprice
+  parvec_6 <- alpha_campaign
+  parvec_7 <- phi_1_full_lm
+  parvec_8 <- phi_2_full_lm
+  parvec_9 <- copula_price
+  parvec_10 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","priceloss_threshold",
+                 "compprice","campagin","correction_vol","correction_price","copulaprice","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r plotting function}
+discountnonlinearest_PL_nothreshold <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgpricebefore)))
+  F_D_L <- 1/(1+exp(-gamma*(df$dlogavgdiscount)))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2]+ parvec[3]*F_H_L)*df$dlogavgpricebefore
+                                  + (parvec[4] + parvec[5]*F_D_L)*df$dlogavgdiscount
+                            + parvec[6]*df$dlogavgcompfinalprice
+                            + parvec[7]*((log(df$totalvolume1))+parvec[8]*log(df$avgpricebefore1)+parvec[9]*df$logavgdiscount1
+                            + parvec[10]*df$cop_logavgpricebefore + parvec[11]*df$cop_logdiscount + parvec[12]*df$holiday))
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgpricebefore + dlogavgdiscount + dlogavgcompfinalprice + log(totalvolume1) + log(avgpricebefore1) +logavgdiscount1 + cop_logavgpricebefore + cop_logdiscount + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_0_disc_lm <- summary(lm_full_linear)$coefficients[3,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+phi_3_full_lm <- (summary(lm_full_linear)$coefficients[7,1])/(summary(lm_full_linear)$coefficients[5,1])
+copula_price <- summary(lm_full_linear)$coefficients[8,1]
+cop_logdiscount <- summary(lm_full_linear)$coefficients[9,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[10,1]
+alpha_l_his_full_lm <- 0
+alpha_l_disc_full_lm <- 0
+
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <-  alpha_0_disc_lm
+  parvec_5 <- alpha_l_disc_full_lm 
+  parvec_6 <- alpha_compprice
+  parvec_7 <- phi_1_full_lm
+  parvec_8 <- phi_2_full_lm
+  parvec_9 <- phi_3_full_lm
+  parvec_10 <- copula_price
+  parvec_11 <- cop_logdiscount
+  parvec_12 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9,parvec_10,parvec_11,parvec_12)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss","disc_elas","disc_elas_loss",
+                 "compprice","correction_vol","correction_price","correction_nondepth","copulaprice","copuladiscount","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
+
+```{r plotting function}
+discountnonlinearest_PL_nothreshold_onlyprice <- function(df){
+  
+df <- df[df$brand == "PL",]
+LS_nonlinear <- function(parvec){
+  
+  F_H_L <- 1/(1+exp(-gamma*(df$dlogavgfinalprice)))
+  
+  ut <- df$dlogtotalvolume - (parvec[1] + (parvec[2]+parvec[3]*F_H_L)*df$dlogavgfinalprice
+                            + parvec[4]*df$dlogavgcompfinalprice + parvec[5]*df$dpricecampaignintensity
+                            + parvec[6]*((log(df$totalvolume1))+parvec[7]*log(df$avgfinalprice1)
+                            + parvec[8]*df$cop_logavgfinalprice + parvec[9]*df$holiday))
+  
+  SSE <- sum(ut^2)
+  return(SSE)
+}
+
+  gamma <- 500 #assumed
+  
+lm_full_linear <- lm(dlogtotalvolume ~ dlogavgfinalprice + dlogavgcompfinalprice + dpricecampaignintensity + log(totalvolume1) + log(avgfinalprice1) + cop_logavgfinalprice + holiday,data=df)
+
+#summary(lm_full_linear)
+
+c_full_lm <- summary(lm_full_linear)$coefficients[1,1]
+alpha_0_full_lm <- summary(lm_full_linear)$coefficients[2,1]
+alpha_compprice <- summary(lm_full_linear)$coefficients[3,1]
+alpha_campaign <- summary(lm_full_linear)$coefficients[4,1]
+phi_1_full_lm <- summary(lm_full_linear)$coefficients[5,1]
+phi_2_full_lm <- (summary(lm_full_linear)$coefficients[6,1])/(summary(lm_full_linear)$coefficients[5,1]) 
+copula_price <- summary(lm_full_linear)$coefficients[7,1]
+alpha_holiday <- summary(lm_full_linear)$coefficients[8,1]
+alpha_l_his_full_lm <- 0
+alpha_l_his_full_lm <- 0
+
+
+  parvec_1 <- c_full_lm
+  parvec_2 <- alpha_0_full_lm
+  parvec_3 <- alpha_l_his_full_lm
+  parvec_4 <- alpha_compprice
+  parvec_5 <- alpha_campaign
+  parvec_6 <- phi_1_full_lm
+  parvec_7 <- phi_2_full_lm
+  parvec_8 <- copula_price
+  parvec_9 <- alpha_holiday
+
+  
+Start_v_LS <- c(parvec_1,parvec_2,parvec_3,parvec_4,parvec_5,parvec_6,parvec_7,parvec_8,parvec_9)
+
+
+
+LS_logL_nonlinear_his_constraint = optim(Start_v_LS,
+                  fn = LS_nonlinear, # function to maximize
+                  method = "BFGS",
+                  control = list(fnscale = 1), # minimize the function
+                  hessian = T # calculate Hessian matrix because we will need for confidence intervals
+                  ) 
+
+
+par_LS.est<-LS_logL_nonlinear_his_constraint$par
+
+
+  n <- dim(df)[1]
+  k <- length(Start_v_LS)
+
+
+MSE_calculated <- LS_logL_nonlinear_his_constraint$value/(n-k)
+
+
+OI<-solve(LS_logL_nonlinear_his_constraint$hessian)
+par_LS.se<-sqrt(diag(OI))
+
+Start_v_LS
+par_LS.est
+
+par_LS_name <- c("constant", "price_elas","price_elas_loss",
+                 "compprice","campaign","correction_vol","correction_price","copulaprice","holiday")
+par_LS <- data.table(cbind(par_LS_name,par_LS.est,par_LS.se))
+par_LS$tstat <- as.numeric(par_LS$par_LS.est)/as.numeric(par_LS$par_LS.se)
+
+par_LS$format <- df$format[1]
+par_LS$category <-df$category[1]
+
+
+print(paste("Linearmodel_SE:",summary(lm_full_linear)$sigma,"Nonlinearmodel_SE:",MSE_calculated))
+return(par_LS)
+}
+```
