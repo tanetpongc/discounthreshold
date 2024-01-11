@@ -14,11 +14,6 @@ aggregate_model1<-function(df){
 ####################################################
 ################## MODEL (II) ######################
 ####################################################
-aggregate_model2<-function(df){
-  m_1 <- lm(dlogtotalvolume ~ dlogavgfinalprice + dlogavgcompfinalprice + log(totalvolume1) + log(avgfinalprice1) + cop_logavgfinalprice + holiday,data=df)
-  return(m_1)
-}
-
 aggregate_model2 <- function(df,alpha_l_price,gamma){
   gamma = gamma #Speed of transition
   LS_nonlinear <- function(parvec){
